@@ -227,6 +227,8 @@ and the current project as follows:
 ├── agents/                                # all distributed workflow worker TOMLs
 │   ├── executor_luna.toml
 │   ├── executor_terra.toml
+│   ├── executor_pro.toml
+│   ├── reviewer_pro.toml
 │   ├── executor_sol.toml
 │   ├── tester.toml
 │   ├── doc-writer.toml
@@ -322,7 +324,7 @@ The current default snapshot is:
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "default_executor": "executor_luna",
   "default_executor_reasoning_effort": "xhigh",
   "auto_check_update": false,
@@ -331,6 +333,8 @@ The current default snapshot is:
   "report_package_size": 250,
   "enabled_workers": [
     "executor_luna",
+    "executor_pro",
+    "reviewer_pro",
     "executor_sol",
     "tester",
     "doc-writer",
@@ -362,9 +366,9 @@ handoff contract rather than persistent user configuration.
 
 The concurrency values must stay synchronized: the confirmed
 `max_concurrent_workers` in `workflow_config.json` is also written to
-`[features.multi_agent_v2].max_concurrent_threads_per_session` in
-`~/.codex/config.toml`. The value `20` is only the current package default; it
-must be replaced when the user selects another valid limit.
+`agents.max_threads` in `~/.codex/config.toml`. V2 is not enabled by the
+workflow. The value `20` is only the current package default; it must be
+replaced when the user selects another valid limit.
 
 When worker definitions or platform settings change, open a new Codex session
 so the updated settings are loaded.
@@ -453,6 +457,8 @@ The current enabled set is:
 | --- | --- | --- |
 | Main agent | Knowledge architect: chooses scope and architecture, distributes guidance, integrates knowledge, and reviews decision-critical boundaries | Only for exceptional scoped takeover, not routine Heavy implementation |
 | Selected default executor (`executor_luna` or `executor_terra`) | Package discovery, production implementation, self-check, and routine repair | Yes, within its work package |
+| `executor_pro` | Explicitly assigned difficult package-local diagnosis, implementation, self-check, and repair | Yes, within its work package; never a normal default executor |
+| `reviewer_pro` | Explicitly assigned independent review of difficult implementations, contracts, architecture, invariants, or evidence | No |
 | `executor_sol` | Complex core reasoning or fallback implementation | Yes, within its work package; limited to one active instance |
 | `tester` | Independent focused tests and failure analysis | Test/fixture scope; production defects return to the executor |
 | `doc-writer` | Assigned documentation during implementation and required installation initialization; not automatic deployment closure | Documentation scope; installation may authorize listed new or still-template-marked recovery files |
@@ -590,9 +596,9 @@ The five blocks are:
 Location: `~/.codex/`
 
 - `~/.codex/agents/` contains all distributed worker TOMLs. The current
-  enabled set is `executor_luna`, `executor_sol`, `tester`, `doc-writer`,
-  `explorer`, and `end_of_session`; `executor_terra` remains available as the
-  alternate default executor.
+  enabled set is `executor_luna`, `executor_pro`, `reviewer_pro`,
+  `executor_sol`, `tester`, `doc-writer`, `explorer`, and `end_of_session`;
+  `executor_terra` remains available as the alternate default executor.
 - `~/.codex/codex_workflow/heavy_route.md` defines Heavy orchestration,
   delegation, limits, repair loops, and ownership.
 - `~/.codex/codex_workflow/medium_route.md` defines main-agent execution with
@@ -633,8 +639,9 @@ The resource currently contains:
 3. `auto_check_update`: currently `false`;
 4. `max_concurrent_workers`: currently `20`;
 5. `max_executor_sol_instances`: currently `1`;
-6. `enabled_workers`: currently `executor_luna`, `executor_sol`, `tester`,
-   `doc-writer`, `explorer`, and required `end_of_session`;
+6. `enabled_workers`: currently `executor_luna`, `executor_pro`, `reviewer_pro`,
+   `executor_sol`, `tester`, `doc-writer`, `explorer`, and required
+   `end_of_session`;
 7. `report_package_size`: currently `250` words.
 
 Related configuration surfaces are:

@@ -6,7 +6,7 @@ Use after Heavy is selected under `AGENTS.md`.
 ## Effective Workflow Configuration
 
 - Default executor: `executor_luna` (`xhigh` reasoning effort).
-- Enabled workers: `executor_luna`, `executor_sol`, `tester`, `doc-writer`, `explorer`, `end_of_session`.
+- Enabled workers: `executor_luna`, `executor_pro`, `reviewer_pro`, `executor_sol`, `tester`, `doc-writer`, `explorer`, `end_of_session`.
 - Maximum concurrent child workers: `20`.
 - Maximum `executor_sol` workers: `1`.
 - Maximum worker final-report package: `250` words.
@@ -115,6 +115,8 @@ Adapt the knowledge supplied by role:
 | Explorer | Questions, boundaries, authoritative sources, evidence format |
 | `executor_luna` | Approach, rationale, invariants, interfaces, pitfalls, and the ordered Execution Guide above |
 | Any other selected default executor | Approach, rationale, invariants, interfaces, pitfalls; no Luna Execution Guide requirement |
+| `executor_pro` | Difficult-package evidence, constraints, invariants, authorized repair scope, acceptance criteria; no Luna Execution Guide requirement |
+| `reviewer_pro` | Review questions, claims and evidence, contracts or invariants, risk areas, read-only boundaries |
 | `executor_sol` | Decision context, constraints, invariants, unresolved problem; do not prescribe the solution |
 | Tester | Acceptance matrix, risks, public contracts, regression boundaries, independence requirements |
 | Doc-writer | Verified facts, changed behavior, audience, terminology, limitations |
@@ -122,7 +124,10 @@ Adapt the knowledge supplied by role:
 
 Use the selected default executor for production work. Reserve `executor_sol`
 for substantial mathematical or logical reasoning or exceptionally difficult
-cross-cutting work. Start the independent tester after executor self-check
+cross-cutting work. Use `executor_pro` or `reviewer_pro` only when explicitly
+assigned difficult implementation/repair or independent review; neither is a
+normal default executor or an automatic routine step. Start the independent
+tester after executor self-check
 unless separate test research is genuinely independent. Delegate documentation
 only after the relevant behavior is verified. Do not create a separate
 doc-writer for the automatic end-of-deployment framework reconciliation; the

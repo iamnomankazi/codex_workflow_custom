@@ -16,7 +16,7 @@ from .migrations import migrate_config_resource
 
 DEFAULT_EXECUTORS = {"executor_luna", "executor_terra"}
 REASONING_EFFORTS = {"high", "xhigh", "max"}
-CONFIG_SCHEMA_VERSION = 4
+CONFIG_SCHEMA_VERSION = 5
 REQUIRED_WORKERS = {"doc-writer", "end_of_session"}
 PLATFORM_MAX_WORKERS = 20
 

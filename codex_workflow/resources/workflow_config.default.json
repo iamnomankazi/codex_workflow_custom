@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "default_executor": "executor_luna",
   "default_executor_reasoning_effort": "xhigh",
   "auto_check_update": false,
@@ -8,6 +8,8 @@
   "report_package_size": 250,
   "enabled_workers": [
     "executor_luna",
+    "executor_pro",
+    "reviewer_pro",
     "executor_sol",
     "tester",
     "doc-writer",

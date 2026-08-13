@@ -6,9 +6,8 @@ Persistent read-only context gateway that refines project evidence into planning
 and knowledge-delta briefs for the main agent.
 """
 
-model = "gpt-5.6-luna"
-model_reasoning_effort = "xhigh"
-service_tier = "fast"
+model = "deepseek/deepseek-v4-flash"
+model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 
 developer_instructions = """

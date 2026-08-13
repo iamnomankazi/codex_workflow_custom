@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import contextlib
 import io
+import re
 import shutil
 import subprocess
 import tempfile
@@ -25,10 +26,13 @@ import workflow as workflow_cli
 
 from runtime._toml import tomllib
 from runtime.config import (
+    DEFAULT_EXECUTORS,
     WorkflowConfig,
+    load_config,
     patch_codex_config,
     remove_workflow_owned_config,
     render_heavy_route,
+    render_worker_template,
 )
 from runtime.backup import append_backup_mutations
 from runtime.errors import TransactionError, ValidationError
@@ -140,6 +144,10 @@ class MarkerTests(unittest.TestCase):
         self.assertIn("planning brief", explorer)
         self.assertIn("knowledge-delta brief", explorer)
         self.assertIn("distinct task names", explorer)
+        self.assertEqual(explorer.count('task_name="explorer_companion"'), 1)
+        self.assertIn('fork_turns="none"', explorer)
+        self.assertIn("Reuse its thread", explorer)
+        self.assertIn("Do not create a\n  second Explorer", explorer)
 
         handoff_contract = (PACKAGE / "end_of_session.md").read_text(
             encoding="utf-8"
@@ -189,6 +197,12 @@ class MarkerTests(unittest.TestCase):
         terra = (PACKAGE / "agents" / "executor_terra.toml").read_text(
             encoding="utf-8"
         )
+        executor_pro = (PACKAGE / "agents" / "executor_pro.toml").read_text(
+            encoding="utf-8"
+        )
+        reviewer_pro = (PACKAGE / "agents" / "reviewer_pro.toml").read_text(
+            encoding="utf-8"
+        )
         doc_writer = (PACKAGE / "agents" / "doc-writer.toml").read_text(
             encoding="utf-8"
         )
@@ -199,6 +213,10 @@ class MarkerTests(unittest.TestCase):
         self.assertIn("Execution Guide as the primary work sequence", executor)
         self.assertIn("Track the completion checklist internally", executor)
         self.assertNotIn("Execution Guide as the primary work sequence", terra)
+        self.assertNotIn("Execution Guide", executor_pro)
+        self.assertNotIn("Execution Guide", reviewer_pro)
+        self.assertIn("explicitly assigned difficult package", executor_pro)
+        self.assertIn("independent serious reviewer", reviewer_pro)
         self.assertIn("always contains one required", bootstrap)
         self.assertIn("explicitly labeled bootstrap/project-install action", doc_writer)
         for required_context in (
@@ -369,11 +387,77 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(raw["auto_check_update"])
         self.assertFalse(WorkflowConfig.from_mapping(raw).auto_check_update)
 
+    def test_deepseek_worker_roles_have_fixed_models_effort_and_authority(self) -> None:
+        workers = {
+            name: tomllib.loads(
+                (PACKAGE / "agents" / f"{name}.toml").read_text(encoding="utf-8")
+            )
+            for name in ("explorer", "executor_pro", "reviewer_pro")
+        }
+        self.assertEqual(workers["explorer"]["name"], "explorer")
+        self.assertEqual(
+            workers["explorer"]["model"], "deepseek/deepseek-v4-flash"
+        )
+        self.assertEqual(workers["explorer"]["model_reasoning_effort"], "max")
+        self.assertEqual(workers["explorer"]["sandbox_mode"], "read-only")
+        self.assertNotIn("service_tier", workers["explorer"])
+        self.assertNotIn("model_provider", workers["explorer"])
+        self.assertNotIn("wire_api", workers["explorer"])
+
+        for role in ("executor_pro", "reviewer_pro"):
+            self.assertEqual(workers[role]["name"], role)
+            self.assertEqual(workers[role]["model"], "deepseek/deepseek-v4-pro")
+            self.assertEqual(workers[role]["model_reasoning_effort"], "max")
+        self.assertEqual(workers["executor_pro"]["sandbox_mode"], "workspace-write")
+        self.assertEqual(workers["reviewer_pro"]["sandbox_mode"], "read-only")
+        self.assertNotEqual(
+            workers["executor_pro"]["developer_instructions"],
+            workers["reviewer_pro"]["developer_instructions"],
+        )
+
+    def test_deepseek_worker_templates_render_deterministically_without_volatile_values(self) -> None:
+        config = load_config(
+            PACKAGE / "resources" / "workflow_config.default.json",
+            templates=PACKAGE / "agents",
+        )
+        volatile_value_patterns = (
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",
+            r"\b[0-9a-f]{40}\b",
+            r"\{\{[^}]+\}\}",
+            r"<deployment[_ -]?id>",
+            r"<run[_ -]?id>",
+        )
+        for worker in ("explorer", "executor_pro", "reviewer_pro"):
+            source = (PACKAGE / "agents" / f"{worker}.toml").read_text(
+                encoding="utf-8"
+            )
+            first = render_worker_template(source, worker=worker, config=config)
+            second = render_worker_template(source, worker=worker, config=config)
+            self.assertEqual(first.encode(), second.encode(), worker)
+            for pattern in volatile_value_patterns:
+                self.assertIsNone(re.search(pattern, first, re.IGNORECASE), (worker, pattern))
+
+    def test_pro_roles_are_enabled_but_cannot_be_default_executors(self) -> None:
+        raw = json.loads(
+            (PACKAGE / "resources" / "workflow_config.default.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(raw["default_executor"], "executor_luna")
+        self.assertEqual(DEFAULT_EXECUTORS, {"executor_luna", "executor_terra"})
+        self.assertIn("executor_pro", raw["enabled_workers"])
+        self.assertIn("reviewer_pro", raw["enabled_workers"])
+        for role in ("executor_pro", "reviewer_pro"):
+            invalid = dict(raw)
+            invalid["default_executor"] = role
+            with self.assertRaises(ValidationError):
+                WorkflowConfig.from_mapping(invalid)
+
     def test_newer_persistent_schema_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             migrate_config_resource(
+                {"schema_version": 6},
                 {"schema_version": 5},
-                {"schema_version": 4},
             )
 
     def test_v2_config_migration_enables_handoff_worker(self) -> None:
@@ -382,10 +466,12 @@ class ConfigTests(unittest.TestCase):
                 "schema_version": 2,
                 "enabled_workers": ["executor_luna", "doc-writer", "explorer"],
             },
-            {"schema_version": 4},
+            {"schema_version": 5},
         )
-        self.assertEqual(migrated["schema_version"], 4)
+        self.assertEqual(migrated["schema_version"], 5)
         self.assertIn("end_of_session", migrated["enabled_workers"])
+        self.assertIn("executor_pro", migrated["enabled_workers"])
+        self.assertIn("reviewer_pro", migrated["enabled_workers"])
         self.assertNotIn("end_of_session_context_turns", migrated)
 
     def test_v3_config_migration_removes_handoff_context_setting(self) -> None:
@@ -394,10 +480,29 @@ class ConfigTests(unittest.TestCase):
                 "schema_version": 3,
                 "end_of_session_context_turns": 150,
             },
-            {"schema_version": 4},
+            {"schema_version": 5},
         )
-        self.assertEqual(migrated["schema_version"], 4)
+        self.assertEqual(migrated["schema_version"], 5)
         self.assertNotIn("end_of_session_context_turns", migrated)
+
+    def test_v4_config_migration_enables_pro_roles(self) -> None:
+        migrated = migrate_config_resource(
+            {
+                "schema_version": 4,
+                "enabled_workers": [
+                    "executor_luna",
+                    "executor_sol",
+                    "tester",
+                    "doc-writer",
+                    "explorer",
+                    "end_of_session",
+                ],
+            },
+            {"schema_version": 5},
+        )
+        self.assertEqual(migrated["schema_version"], 5)
+        self.assertEqual(migrated["enabled_workers"].count("executor_pro"), 1)
+        self.assertEqual(migrated["enabled_workers"].count("reviewer_pro"), 1)
 
     def test_worker_limit_above_platform_limit_is_rejected(self) -> None:
         raw = json.loads(
@@ -1079,9 +1184,11 @@ class LifecycleIntegrationTests(unittest.TestCase):
         incoming = self.incoming_package("config-migration-incoming", "1.2.0")
         plan_update(incoming, self.runtime, self.project).apply()
         migrated = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(migrated["schema_version"], 4)
+        self.assertEqual(migrated["schema_version"], 5)
         self.assertEqual(migrated["default_executor_reasoning_effort"], "max")
         self.assertEqual(migrated["max_concurrent_workers"], 9)
+        self.assertIn("executor_pro", migrated["enabled_workers"])
+        self.assertIn("reviewer_pro", migrated["enabled_workers"])
         self.assertNotIn("end_of_session_context_turns", migrated)
 
     def test_cli_install_reports_enabled_disabled_and_stale_states(self) -> None:
