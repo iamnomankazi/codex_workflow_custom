@@ -196,27 +196,73 @@ def render_worker_template(text: str, *, worker: str, config: WorkflowConfig) ->
 
 
 def patch_codex_config(text: str, config: WorkflowConfig) -> str:
+    parsed: dict[str, Any] = {}
     if text.strip():
         try:
-            tomllib.loads(text)
+            parsed = tomllib.loads(text)
         except tomllib.TOMLDecodeError as error:
             raise ValidationError(f"existing Codex config is invalid TOML: {error}") from error
-    sections: dict[str, dict[str, str]] = {
-        "agents": {"enabled": "true"},
-        "features.multi_agent_v2": {
-            "enabled": "true",
-            "max_concurrent_threads_per_session": str(config.max_concurrent_workers),
-            "hide_spawn_agent_metadata": "false",
-            "tool_namespace": '"agents"',
-            "min_wait_timeout_ms": "300_000",
-            "default_wait_timeout_ms": "300_000",
-            "max_wait_timeout_ms": "3_600_000",
-        },
-    }
+    _reject_enabled_multi_agent_v2(parsed)
+
     lines = text.splitlines()
-    for section, values in sections.items():
-        lines = _patch_section(lines, section, values)
-    rendered = "\n".join(lines).rstrip() + "\n"
+    agents = parsed.get("agents")
+    if agents is not None and not isinstance(agents, dict):
+        raise ValidationError("[agents] must be a TOML table")
+
+    bounds = _section_bounds(lines, "agents")
+    _validate_ownership_markers(lines, bounds)
+    existing = agents.get("max_threads") if isinstance(agents, dict) else None
+    has_existing = isinstance(agents, dict) and "max_threads" in agents
+
+    required = config.max_concurrent_workers
+    if has_existing:
+        if not isinstance(existing, int) or isinstance(existing, bool):
+            raise ValidationError("agents.max_threads must be an integer")
+        owned_lines = _owned_max_threads_lines(lines, bounds)
+        if len(owned_lines) > 1:
+            raise ValidationError("ambiguous workflow-owned agents.max_threads definition")
+        if not owned_lines:
+            if existing != required:
+                raise ValidationError(
+                    "agents.max_threads is already set to "
+                    f"{existing}, but codex-workflow-custom requires {required}; "
+                    "change or remove the user/OpenCodex-owned value explicitly"
+                )
+            return text
+        line_index = owned_lines[0]
+        replacement = (
+            _owned_dotted_max_threads_line(required)
+            if _OWNED_DOTTED_MAX_THREADS.fullmatch(lines[line_index])
+            else _owned_max_threads_line(required)
+        )
+        if lines[line_index] == replacement:
+            return text
+        lines[line_index] = replacement
+    elif bounds is not None:
+        _, end = bounds
+        lines.insert(end, _owned_max_threads_line(required))
+    elif _root_inline_agents_lines(lines):
+        raise ValidationError(
+            "agents is an inline table without max_threads; "
+            "codex-workflow-custom cannot add capacity without restructuring "
+            "the user-owned inline table"
+        )
+    elif _root_dotted_agents_lines(lines):
+        lines.insert(_root_table_end(lines), _owned_dotted_max_threads_line(required))
+    elif isinstance(agents, dict) and _has_agents_subtable(lines):
+        lines.append(_owned_agents_header())
+        lines.append(_owned_max_threads_line(required))
+    elif agents is None:
+        lines.append(_owned_agents_header())
+        lines.append(_owned_max_threads_line(required))
+    else:
+        if agents is not None:
+            raise ValidationError(
+                "agents uses an unsupported TOML representation without max_threads; "
+                "codex-workflow-custom cannot add capacity safely"
+            )
+
+    rendered = _render_lines(lines, text)
     try:
         tomllib.loads(rendered)
     except tomllib.TOMLDecodeError as error:
@@ -225,52 +271,191 @@ def patch_codex_config(text: str, config: WorkflowConfig) -> str:
 
 
 _SECTION = re.compile(r"^\s*\[([^]]+)]\s*(?:#.*)?$")
+_TABLE_BOUNDARY = re.compile(r"^\s*(?:\[[^]]+]\]|\[[^]]+])\s*(?:#.*)?$")
 _KEY = re.compile(r"^\s*([A-Za-z0-9_-]+)\s*=")
+WORKFLOW_OWNED_MAX_THREADS_MARKER = (
+    "# codex-workflow-custom-owned: agents.max_threads"
+)
+WORKFLOW_CREATED_AGENTS_MARKER = (
+    "# codex-workflow-custom-owned: agents table"
+)
+_OWNED_MAX_THREADS = re.compile(
+    r"^\s*max_threads\s*=\s*([0-9]+)\s+"
+    + re.escape(WORKFLOW_OWNED_MAX_THREADS_MARKER)
+    + r"\s*$"
+)
+_ROOT_DOTTED_AGENTS = re.compile(r"^\s*agents\.[A-Za-z0-9_-]+\s*=")
+_ROOT_INLINE_AGENTS = re.compile(r"^\s*agents\s*=")
+_OWNED_DOTTED_MAX_THREADS = re.compile(
+    r"^\s*agents\.max_threads\s*=\s*([0-9]+)\s+"
+    + re.escape(WORKFLOW_OWNED_MAX_THREADS_MARKER)
+    + r"\s*$"
+)
+_OWNED_AGENTS_HEADER = re.compile(
+    r"^\s*\[agents]\s+"
+    + re.escape(WORKFLOW_CREATED_AGENTS_MARKER)
+    + r"\s*$"
+)
 
 
-def _patch_section(lines: list[str], section: str, values: dict[str, str]) -> list[str]:
-    headers = [index for index, line in enumerate(lines) if (_SECTION.match(line) and _SECTION.match(line).group(1) == section)]
+def _section_bounds(lines: list[str], section: str) -> tuple[int, int] | None:
+    headers = [
+        index
+        for index, line in enumerate(lines)
+        if (_SECTION.match(line) and _SECTION.match(line).group(1) == section)
+    ]
     if len(headers) > 1:
         raise ValidationError(f"duplicate TOML section [{section}]")
     if not headers:
-        result = list(lines)
-        if result and result[-1].strip():
-            result.append("")
-        result.append(f"[{section}]")
-        result.extend(f"{key} = {value}" for key, value in values.items())
-        return result
+        return None
     start = headers[0]
     end = next(
-        (index for index in range(start + 1, len(lines)) if _SECTION.match(lines[index])),
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if _TABLE_BOUNDARY.match(lines[index])
+        ),
         len(lines),
     )
-    found: dict[str, int] = {}
-    result = list(lines)
+    return start, end
+
+
+def _key_lines(
+    lines: list[str], bounds: tuple[int, int] | None, key: str
+) -> list[int]:
+    if bounds is None:
+        return []
+    start, end = bounds
+    matches: list[int] = []
     for index in range(start + 1, end):
-        match = _KEY.match(result[index])
-        if match and match.group(1) in values:
-            key = match.group(1)
-            if key in found:
-                raise ValidationError(f"duplicate workflow-owned TOML key [{section}].{key}")
-            found[key] = index
-            result[index] = f"{key} = {values[key]}"
-    missing = [key for key in values if key not in found]
-    result[end:end] = [f"{key} = {values[key]}" for key in missing]
-    return result
+        match = _KEY.match(lines[index])
+        if match and match.group(1) == key:
+            matches.append(index)
+    return matches
 
 
-_WORKFLOW_OWNED_KEYS: dict[str, set[str]] = {
-    "agents": {"enabled"},
-    "features.multi_agent_v2": {
-        "enabled",
-        "max_concurrent_threads_per_session",
-        "hide_spawn_agent_metadata",
-        "tool_namespace",
-        "min_wait_timeout_ms",
-        "default_wait_timeout_ms",
-        "max_wait_timeout_ms",
-    },
-}
+def _root_table_end(lines: list[str]) -> int:
+    return next(
+        (index for index, line in enumerate(lines) if _TABLE_BOUNDARY.match(line)),
+        len(lines),
+    )
+
+
+def _root_dotted_agents_lines(lines: list[str]) -> list[int]:
+    end = _root_table_end(lines)
+    return [
+        index
+        for index in range(end)
+        if _ROOT_DOTTED_AGENTS.match(lines[index])
+    ]
+
+
+def _root_inline_agents_lines(lines: list[str]) -> list[int]:
+    end = _root_table_end(lines)
+    return [
+        index
+        for index in range(end)
+        if _ROOT_INLINE_AGENTS.match(lines[index])
+    ]
+
+
+def _has_agents_subtable(lines: list[str]) -> bool:
+    return any(
+        match and match.group(1).startswith("agents.")
+        for line in lines
+        if (match := _SECTION.match(line))
+    )
+
+
+def _owned_max_threads_lines(
+    lines: list[str], bounds: tuple[int, int] | None
+) -> list[int]:
+    explicit = [
+        index
+        for index in _key_lines(lines, bounds, "max_threads")
+        if _OWNED_MAX_THREADS.fullmatch(lines[index])
+    ]
+    dotted = [
+        index
+        for index in _root_dotted_agents_lines(lines)
+        if _OWNED_DOTTED_MAX_THREADS.fullmatch(lines[index])
+    ]
+    return explicit + dotted
+
+
+def _reject_enabled_multi_agent_v2(parsed: dict[str, Any]) -> None:
+    features = parsed.get("features")
+    if not isinstance(features, dict) or "multi_agent_v2" not in features:
+        return
+    setting = features["multi_agent_v2"]
+    if isinstance(setting, bool):
+        enabled = setting
+    elif isinstance(setting, dict):
+        if "enabled" not in setting or not isinstance(setting["enabled"], bool):
+            raise ValidationError(
+                "features.multi_agent_v2 must explicitly use a boolean enabled value"
+            )
+        enabled = setting["enabled"]
+    else:
+        raise ValidationError("features.multi_agent_v2 must be a boolean or table")
+    if enabled:
+        raise ValidationError(
+            "codex-workflow-custom targets Codex 0.144 V1 and cannot set "
+            "agents.max_threads while multi-agent V2 is explicitly enabled; "
+            "disable V2 explicitly before configuring this workflow"
+        )
+
+
+def _owned_agents_header() -> str:
+    return f"[agents] {WORKFLOW_CREATED_AGENTS_MARKER}"
+
+
+def _owned_max_threads_line(value: int) -> str:
+    return f"max_threads = {value} {WORKFLOW_OWNED_MAX_THREADS_MARKER}"
+
+
+def _owned_dotted_max_threads_line(value: int) -> str:
+    return f"agents.max_threads = {value} {WORKFLOW_OWNED_MAX_THREADS_MARKER}"
+
+
+def _render_lines(lines: list[str], original: str) -> str:
+    newline = "\r\n" if "\r\n" in original else "\n"
+    rendered = newline.join(lines)
+    if original.endswith(("\n", "\r")) or not original:
+        rendered += newline
+    return rendered
+
+
+def _validate_ownership_markers(
+    lines: list[str], bounds: tuple[int, int] | None
+) -> None:
+    max_lines = _key_lines(lines, bounds, "max_threads")
+    valid_setting_lines = {
+        index for index in max_lines if _OWNED_MAX_THREADS.fullmatch(lines[index])
+    }
+    valid_setting_lines.update(
+        index
+        for index in _root_dotted_agents_lines(lines)
+        if _OWNED_DOTTED_MAX_THREADS.fullmatch(lines[index])
+    )
+    marker_lines = {
+        index
+        for index, line in enumerate(lines)
+        if WORKFLOW_OWNED_MAX_THREADS_MARKER in line
+    }
+    if marker_lines != valid_setting_lines:
+        raise ValidationError("malformed codex-workflow-custom max_threads ownership marker")
+
+    valid_header_lines: set[int] = set()
+    if bounds is not None and _OWNED_AGENTS_HEADER.fullmatch(lines[bounds[0]]):
+        valid_header_lines.add(bounds[0])
+    header_marker_lines = {
+        index
+        for index, line in enumerate(lines)
+        if WORKFLOW_CREATED_AGENTS_MARKER in line
+    }
+    if header_marker_lines != valid_header_lines:
+        raise ValidationError("malformed codex-workflow-custom agents-table marker")
 
 
 def remove_workflow_owned_config(text: str) -> str:
@@ -282,39 +467,46 @@ def remove_workflow_owned_config(text: str) -> str:
     except tomllib.TOMLDecodeError as error:
         raise ValidationError(f"existing Codex config is invalid TOML: {error}") from error
 
+    if (
+        WORKFLOW_OWNED_MAX_THREADS_MARKER not in text
+        and WORKFLOW_CREATED_AGENTS_MARKER not in text
+    ):
+        return text
+
     lines = text.splitlines()
-    result: list[str] = []
-    index = 0
-    while index < len(lines):
-        header = _SECTION.match(lines[index])
-        if header is None or header.group(1) not in _WORKFLOW_OWNED_KEYS:
-            result.append(lines[index])
-            index += 1
-            continue
+    bounds = _section_bounds(lines, "agents")
+    _validate_ownership_markers(lines, bounds)
+    owned_lines = _owned_max_threads_lines(lines, bounds)
+    if len(owned_lines) != 1:
+        raise ValidationError("expected one workflow-owned agents.max_threads setting")
+    if _OWNED_DOTTED_MAX_THREADS.fullmatch(lines[owned_lines[0]]):
+        result = [
+            line for index, line in enumerate(lines) if index != owned_lines[0]
+        ]
+        rendered = _render_lines(result, text) if result else ""
+        try:
+            tomllib.loads(rendered)
+        except tomllib.TOMLDecodeError as error:
+            raise ValidationError(
+                f"generated Codex config is invalid TOML: {error}"
+            ) from error
+        return rendered
 
-        section = header.group(1)
-        end = next(
-            (
-                position
-                for position in range(index + 1, len(lines))
-                if _SECTION.match(lines[position])
-            ),
-            len(lines),
-        )
-        owned = _WORKFLOW_OWNED_KEYS[section]
-        retained: list[str] = []
-        for line in lines[index + 1 : end]:
-            match = _KEY.match(line)
-            if match is None or match.group(1) not in owned:
-                retained.append(line)
-        if any(line.strip() for line in retained):
-            result.append(lines[index])
-            result.extend(retained)
-        index = end
+    if bounds is None:
+        raise ValidationError("workflow-owned max_threads requires an [agents] table")
+    start, end = bounds
+    created_table = WORKFLOW_CREATED_AGENTS_MARKER in lines[start]
+    retained_body = [
+        line for index, line in enumerate(lines[start + 1 : end], start + 1)
+        if index not in owned_lines
+    ]
+    if created_table and not any(line.strip() for line in retained_body):
+        result = lines[:start] + lines[end:]
+    else:
+        header = "[agents]" if created_table else lines[start]
+        result = lines[:start] + [header] + retained_body + lines[end:]
 
-    rendered = "\n".join(result).rstrip()
-    if rendered:
-        rendered += "\n"
+    rendered = _render_lines(result, text) if result else ""
     try:
         tomllib.loads(rendered)
     except tomllib.TOMLDecodeError as error:
