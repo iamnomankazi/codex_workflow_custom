@@ -124,37 +124,48 @@ Adapt the knowledge supplied by role:
 
 Use the selected default executor for production work. Reserve `executor_sol`
 for substantial mathematical or logical reasoning or exceptionally difficult
-cross-cutting work. Use `executor_pro` or `reviewer_pro` only when explicitly
-assigned difficult implementation/repair or independent review; neither is a
-normal default executor or an automatic routine step. Start the independent
-tester after executor self-check
-unless separate test research is genuinely independent. Delegate documentation
+cross-cutting work. Pro roles are not defaults, first-line repair, or automatic
+review stages. The parent explicitly assigns them, including bounded serious
+`executor_pro` escalation after Luna exhausts routine repair. Start the tester
+after executor self-check unless separate test research is independent. Delegate documentation
 only after the relevant behavior is verified. Do not create a separate
 doc-writer for the automatic end-of-deployment framework reconciliation; the
 End-of-Session worker owns it.
 
-## Direct Repair Loop
+## Direct Repair and Pro Escalation
 
-Pair each verification package with the responsible executor and provide both
-canonical task names. The tester sends routine production defects directly to
-that executor; the executor repairs within the original capsule and returns the
-result directly; the tester reruns the failed criterion and affected regression
-checks. Test, fixture, mock, or test-data defects stay with the tester. The main
-agent does not relay or rediagnose routine defects.
-
-A defect packet contains:
-
-- Failed acceptance criterion and minimal reproduction.
-- Observed versus expected behavior.
-- Affected files or contract.
-- Focused command/method and artifact-backed evidence.
-- Whether scope or architecture appears implicated.
-
-Escalate to the main agent only when repair conflicts with the capsule, changes
-a cross-package contract, invalidates a material decision, requires expanded
-ownership, introduces security or migration risk, or the same criterion still
-fails after two focused repair attempts. Escalation reports the new knowledge
-and decision needed, not the full repair transcript.
+Pair each verification package with the responsible executor and both canonical task names.
+For Luna or Terra, Tester sends a focused `followup_task` defect packet to the same responsible worker. That executor repairs within its capsule,
+self-checks, then sends completion evidence via `send_message` to the same waiting
+tester. That mailbox, not the executor's ordinary final, wakes Tester to rerun the
+failed criterion and regressions; Parent is not the routine native-executor relay.
+Missing tester identity or failed delivery goes in the executor's parent-visible final; never stall or invent a replacement.
+For Luna, use the same Luna worker for repair #1. If the criterion still fails
+without a structural condition, use the same Luna worker for repair #2, direct
+message, and recheck. Never send a third routine Luna repair for that criterion.
+Count only a focused production-repair request reaching Luna, not implementation,
+self-check, tester corrections, wrong-test reruns, evidence-only contact,
+communication-only `send_message`, `wait_agent`, early escalation, or a new or
+materially re-scoped criterion. Before either Luna repair, return capsule/invariant
+conflict, cross-package contract or architecture change, expanded ownership,
+security risk, or migration risk to Parent immediately. After repair #2 still fails,
+tester sends the parent a compact serious packet with task/package/iteration,
+criterion/reproduction, observed/expected behavior, affected contract, focused
+evidence, both outcomes, and scope or risk. Tester never creates Pro.
+For manually selected Terra, use one same-Terra `followup_task`, self-check, direct
+`send_message`, and recheck. A remaining failure or material condition returns
+evidence to Parent for its decision. Terra does not inherit Luna's two-repair or
+automatic-Pro ladder: no Terra-to-Luna, second-Terra, Pro, Sol, or Reviewer fallback.
+After Luna's serious packet, Parent normally creates one initial `executor_pro` with
+`fork_turns="none"`; its capsule carries authority, decisions/invariants, current
+implementation, failed criterion, both Luna outcomes, tester evidence, affected
+contracts, repair surface, regression boundary, and verification—not Luna's Guide
+or raw history. The parent retains Pro's canonical identity and spawn ownership.
+Every Pro final returns to the parent, which thin-relays it unchanged via
+`send_message` to the same waiting tester; that mailbox wakes tester to recheck.
+Later defects use `followup_task` deltas to the same Pro and repeat this relay.
+Never respawn Pro. If unavailable, conflicted, or failed, return evidence to Parent;
+do not automatically invoke `executor_sol` or `reviewer_pro`.
 
 ## Layered Evidence and Reports
 

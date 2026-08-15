@@ -506,14 +506,35 @@ Explorer refines project and repository evidence into a planning brief
 Main forms architecture and distributes guidance-rich package(s)
         │
         ▼
-Executor implements one coherent increment and self-validates
+Luna implements one coherent increment and self-validates
         │
         ▼
-Tester independently runs focused checks when testing is warranted
-        │
-        ├── routine defect ─► direct executor repair ─► tester recheck
+Tester runs focused checks; Luna gets at most two same-criterion repairs
+        │ failure
+        ▼
+Tester followup_task ─► same Luna repair #1 and focused self-check
+        │ Luna send_message completion wakes Tester
+        ▼
+Tester rechecks the failed criterion and affected regressions
+        │ same criterion still fails
+        ▼
+Tester followup_task ─► same Luna repair #2 and focused self-check
+        │ Luna send_message completion wakes Tester
+        ▼
+Tester rechecks the failed criterion and affected regressions
+        │ same criterion still fails
+        ▼
+Parent creates one isolated executor_pro and retains its canonical identity
+        │ Pro final returns to Parent
+        ▼
+Parent thin-relays result via send_message to the same waiting Tester
+        │ mailbox wakes Tester
+        ▼
+Tester rechecks the focused criterion
+        │ bounded follow-up defect
+        ├── followup_task to same Pro ─► final to Parent ─► same relay ─► recheck
         ├── proof ─────────► compact knowledge report
-        └── decision defect ─► main agent re-scopes or decides
+        └── structural evidence ─► parent resolves scope/authority immediately
         │
         ▼
 Explorer consolidates material knowledge deltas when needed
@@ -526,12 +547,26 @@ Fresh Luna xhigh worker automatically closes the deployment before the final res
 ```
 
 The tester and responsible executor receive each other's canonical task names.
-Routine production defects travel directly between them as compact packets with
-the failed criterion, reproduction, expected and observed behavior, affected
-contract, evidence artifact, and scope/architecture assessment. The main agent
-is involved only for capsule conflict, cross-package contract change, an
-invalidated decision, expanded ownership, security or migration risk, or
-repeated failure. Test and fixture defects stay with the tester.
+For Luna, only focused production requests for the same criterion count toward
+the two-repair limit; implementation, tester-owned corrections, wrong-test
+reruns, evidence-only contact, completion `send_message`, waiting, early
+escalation, and parent-created new or re-scoped criteria do not. Each routine
+repair uses `followup_task` on the same Luna; after repair and self-check, Luna's
+direct `send_message` wakes tester to recheck without a routine parent relay.
+After the second failed recheck, tester reports both outcomes to the parent and
+never creates Pro. Parent assigns one isolated `executor_pro`, retains its
+canonical identity, and gives it to tester. Pro finals return to the parent as
+spawn owner; parent thin-relays each result with `send_message` to the same
+waiting tester. Tester rechecks and sends another bounded `followup_task` to the
+same Pro when needed; that final repeats the parent relay. Structural contract,
+architecture, ownership, security, or migration evidence bypasses remaining Luna
+attempts. Terra has no automatic ladder; Reviewer Pro and Sol remain selective
+parent decisions. When Terra is manually selected, tester sends one
+`followup_task` to the same Terra worker; Terra repairs, self-checks, and directly
+signals that waiting tester with `send_message` for recheck. A remaining failure
+returns to the parent for a decision—there is no automatic second Terra,
+Terra-to-Luna substitution, or Pro/Sol/Reviewer fallback. Test and fixture
+defects stay with tester.
 
 Workers keep raw logs, large diffs, reports, responses, and diagnostics in
 artifacts or retained thread context. Upward reports give the outcome, contract

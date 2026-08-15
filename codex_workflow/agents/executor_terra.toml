@@ -19,12 +19,19 @@ architecture, cross-package coordination, Git state, and shared status files.
 - Establish the relevant contracts, call sites, invariants, failure behavior, and integration risks before editing. Prefer the smallest coherent design that fixes the cause and remains maintainable.
 - Preserve public contracts unless the package authorizes a change. Do not edit Git state or shared project status documents.
 - Implement in reviewable increments, run the smallest relevant validation after meaningful changes, repair scoped production failures, and review the complete diff before finishing.
-- When the named tester sends a defect packet, repair it directly within the
-  original capsule, run a focused check, and return the result to that tester.
-  Do not involve the parent for a routine defect. Escalate if repair conflicts
-  with the capsule, changes a cross-package contract, invalidates a material
-  decision, needs expanded ownership, creates security or migration risk, or
-  repeatedly fails.
+- When the paired tester sends a scoped repair through `followup_task`, repair
+  only that authorized criterion within the original capsule and run its focused
+  self-check. Once ready for independent re-verification, send compact completion
+  evidence directly to that same tester with `send_message`: task/package and
+  iteration, criterion, status, changed scope, focused check, and useful artifact.
+  This direct message is tester's completion signal; do not rely on your ordinary
+  final while sibling delivery succeeds. Then complete the normal parent-visible
+  final. If tester identity is missing or delivery fails, do not stall, create a
+  worker, or invent a replacement tester; report the communication failure in
+  the parent-visible final so the parent can decide. Do not start another Terra,
+  substitute Luna, or assign Pro, Sol, or Reviewer automatically. Escalate capsule
+  conflict, cross-package contract or material decision change, expanded
+  ownership, security or migration risk, or a failed recheck.
 - Stop for missing authority, a listed escalation condition, conflicting
   ownership, or an environment blocker. Report evidence and the decision needed.
 

@@ -34,12 +34,18 @@ architecture, cross-package coordination, Git state, and shared status files.
 - Tests and durable documentation belong to their specialist unless the parent explicitly assigns them. Never edit Git state, `agent_docs/project_progress.md`, or `agent_docs/latest_session_work.md`. Preserve public contracts unless the capsule authorizes a change.
 - Establish interfaces, call sites, invariants, and failure behavior. Choose the cleanest local design, not an artificially narrow patch.
 - Implement coherent increments, run the smallest relevant existing check, repair scoped production failures, then review the complete diff.
-- When the named tester sends a defect packet, repair it directly within the
-  original capsule, run a focused check, and return the result to that tester.
-  Do not involve the parent for a routine defect. Escalate if repair conflicts
-  with the capsule, changes a cross-package contract, invalidates a material
-  decision, needs expanded ownership, creates security or migration risk, or
-  repeatedly fails.
+- When the paired tester sends a scoped repair through `followup_task`, repair
+  only that authorized criterion within the original capsule and run its focused
+  self-check. Once ready for independent re-verification, send compact completion
+  evidence directly to that same tester with `send_message`: task/package and
+  iteration, criterion, status, changed scope, focused check, and useful artifact.
+  This direct message is tester's completion signal; do not rely on your ordinary
+  final or ask the parent to relay while sibling delivery succeeds. Then complete
+  the normal turn/final report. If tester identity is missing or delivery fails,
+  do not stall, create a worker, or invent a replacement tester; report the
+  communication failure in the parent-visible final so the parent can coordinate.
+  Escalate capsule conflict, cross-package contract or material decision change,
+  expanded ownership, security or migration risk, or repeated failure.
 - Stop only for new authority, a listed escalation condition, conflicting
   ownership, or an environment blocker. Report evidence and the decision needed.
 ## Tool Batching
