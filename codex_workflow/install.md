@@ -1,8 +1,10 @@
 # Workflow Installation
 
 Use this procedure only to install the already-bootstrapped workflow into the
-current project. Do not manually copy or merge workflow files, and do not
-modify or reinstall anything under `~/.codex/`.
+current project. Resolve the Codex home from a non-empty `CODEX_HOME`
+environment variable when it is set; otherwise use `~/.codex`. Do not manually
+copy or merge workflow files, and do not modify or reinstall anything under
+`<Codex home>/`.
 
 Python 3.11 or newer is required. On Windows, use the equivalent `py -3.11`
 invocation and native paths.
@@ -31,7 +33,7 @@ instruction. Do not misreport those states as an ordinary disabled installation.
 Use the installed CLI:
 
 ```text
-python3 ~/.codex/codex_workflow/workflow.py install \
+python3 <Codex home>/codex_workflow/workflow.py install \
   --project <project>
 ```
 
@@ -43,7 +45,7 @@ project `AGENTS.md` verbatim into the project-local marker region and adds the
 workflow-owned project paths to `.gitignore` without changing unrelated rules.
 
 It does not rewrite the shared user-level runtime, configuration, user
-instructions, source backup, or worker TOMLs under `~/.codex/`. Stop and report
+instructions, source backup, or worker TOMLs under `<Codex home>/`. Stop and report
 the error if the initial user-level bootstrap is missing.
 
 ## Required documentation action

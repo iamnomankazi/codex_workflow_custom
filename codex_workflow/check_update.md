@@ -1,9 +1,10 @@
 # Check for Updates
 
-Run the installed lifecycle CLI:
+Run the installed lifecycle CLI, resolving the Codex home from a non-empty
+`CODEX_HOME` environment variable when it is set; otherwise use `~/.codex`:
 
 ```text
-python3 ~/.codex/codex_workflow/workflow.py check-update --json
+python3 <Codex home>/codex_workflow/workflow.py check-update --json
 ```
 
 This is an explicit, read-only check and runs regardless of the automatic

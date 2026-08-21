@@ -202,71 +202,65 @@ def patch_codex_config(text: str, config: WorkflowConfig) -> str:
             parsed = tomllib.loads(text)
         except tomllib.TOMLDecodeError as error:
             raise ValidationError(f"existing Codex config is invalid TOML: {error}") from error
-    _reject_enabled_multi_agent_v2(parsed)
 
     lines = text.splitlines()
     agents = parsed.get("agents")
     if agents is not None and not isinstance(agents, dict):
         raise ValidationError("[agents] must be a TOML table")
-
     bounds = _section_bounds(lines, "agents")
+    if bounds is not None and agents is None:
+        raise ValidationError(
+            "existing Codex config contains an ambiguous [agents] representation; "
+            "cannot verify that agents.max_threads is absent safely"
+        )
     _validate_ownership_markers(lines, bounds)
-    existing = agents.get("max_threads") if isinstance(agents, dict) else None
     has_existing = isinstance(agents, dict) and "max_threads" in agents
-
-    required = config.max_concurrent_workers
     if has_existing:
-        if not isinstance(existing, int) or isinstance(existing, bool):
-            raise ValidationError("agents.max_threads must be an integer")
         owned_lines = _owned_max_threads_lines(lines, bounds)
         if len(owned_lines) > 1:
             raise ValidationError("ambiguous workflow-owned agents.max_threads definition")
         if not owned_lines:
-            if existing != required:
-                raise ValidationError(
-                    "agents.max_threads is already set to "
-                    f"{existing}, but codex-workflow-custom requires {required}; "
-                    "change or remove the user/OpenCodex-owned value explicitly"
-                )
-            return text
-        line_index = owned_lines[0]
-        replacement = (
-            _owned_dotted_max_threads_line(required)
-            if _OWNED_DOTTED_MAX_THREADS.fullmatch(lines[line_index])
-            else _owned_max_threads_line(required)
-        )
-        if lines[line_index] == replacement:
-            return text
-        lines[line_index] = replacement
-    elif bounds is not None:
-        _, end = bounds
-        lines.insert(end, _owned_max_threads_line(required))
-    elif _root_inline_agents_lines(lines):
-        raise ValidationError(
-            "agents is an inline table without max_threads; "
-            "codex-workflow-custom cannot add capacity without restructuring "
-            "the user-owned inline table"
-        )
-    elif _root_dotted_agents_lines(lines):
-        lines.insert(_root_table_end(lines), _owned_dotted_max_threads_line(required))
-    elif isinstance(agents, dict) and _has_agents_subtable(lines):
-        lines.append(_owned_agents_header())
-        lines.append(_owned_max_threads_line(required))
-    elif agents is None:
-        lines.append(_owned_agents_header())
-        lines.append(_owned_max_threads_line(required))
-    else:
-        if agents is not None:
             raise ValidationError(
-                "agents uses an unsupported TOML representation without max_threads; "
-                "codex-workflow-custom cannot add capacity safely"
+                "agents.max_threads is a user/OpenCodex-owned legacy V1 capacity "
+                "field and cannot coexist with required Multi-Agent V2; remove it "
+                "explicitly before configuring this workflow"
             )
+        lines = _remove_owned_agents(lines)
+
+    features = parsed.get("features")
+    if features is not None and not isinstance(features, dict):
+        raise ValidationError("[features] must be a TOML table")
+    feature_bounds = _section_bounds(lines, "features")
+    if feature_bounds is not None and features is None:
+        raise ValidationError(
+            "existing Codex config contains an ambiguous [features] representation; "
+            "cannot materialize the required Multi-Agent V2 setting safely"
+        )
+    v2_bounds = _section_bounds(lines, "features.multi_agent_v2")
+    if v2_bounds is not None and (
+        not isinstance(features, dict)
+        or not isinstance(features.get("multi_agent_v2"), dict)
+    ):
+        raise ValidationError(
+            "existing Codex config contains an ambiguous "
+            "[features.multi_agent_v2] representation; cannot materialize the "
+            "required V2 session capacity safely"
+        )
+    _validate_v2_ownership_markers(lines, feature_bounds, v2_bounds)
+    _patch_required_multi_agent_v2(
+        lines,
+        features,
+        feature_bounds,
+        v2_bounds,
+        config.max_concurrent_workers + 1,
+    )
 
     rendered = _render_lines(lines, text)
     try:
-        tomllib.loads(rendered)
+        generated = tomllib.loads(rendered)
     except tomllib.TOMLDecodeError as error:
         raise ValidationError(f"generated Codex config is invalid TOML: {error}") from error
+    _validate_generated_config_postconditions(generated, config)
     return rendered
 
 
@@ -278,6 +272,18 @@ WORKFLOW_OWNED_MAX_THREADS_MARKER = (
 )
 WORKFLOW_CREATED_AGENTS_MARKER = (
     "# codex-workflow-custom-owned: agents table"
+)
+WORKFLOW_OWNED_MULTI_AGENT_V2_MARKER = (
+    "# codex-workflow-custom-owned: features.multi_agent_v2"
+)
+WORKFLOW_CREATED_FEATURES_MARKER = (
+    "# codex-workflow-custom-owned: features table"
+)
+WORKFLOW_OWNED_V2_CAPACITY_MARKER = (
+    "# codex-workflow-custom-owned: V2 max_concurrent_threads_per_session"
+)
+WORKFLOW_CREATED_V2_TABLE_MARKER = (
+    "# codex-workflow-custom-owned: V2 feature table"
 )
 _OWNED_MAX_THREADS = re.compile(
     r"^\s*max_threads\s*=\s*([0-9]+)\s+"
@@ -294,6 +300,38 @@ _OWNED_DOTTED_MAX_THREADS = re.compile(
 _OWNED_AGENTS_HEADER = re.compile(
     r"^\s*\[agents]\s+"
     + re.escape(WORKFLOW_CREATED_AGENTS_MARKER)
+    + r"\s*$"
+)
+_OWNED_MULTI_AGENT_V2 = re.compile(
+    r"^\s*multi_agent_v2\s*=\s*(true|false)\s+"
+    + re.escape(WORKFLOW_OWNED_MULTI_AGENT_V2_MARKER)
+    + r"\s*$"
+)
+_ROOT_DOTTED_FEATURES = re.compile(r"^\s*features\.[A-Za-z0-9_-]+\s*=")
+_ROOT_INLINE_FEATURES = re.compile(r"^\s*features\s*=")
+_OWNED_DOTTED_MULTI_AGENT_V2 = re.compile(
+    r"^\s*features\.multi_agent_v2\s*=\s*(true|false)\s+"
+    + re.escape(WORKFLOW_OWNED_MULTI_AGENT_V2_MARKER)
+    + r"\s*$"
+)
+_OWNED_V2_ENABLED = re.compile(
+    r"^\s*enabled\s*=\s*(true|false)\s+"
+    + re.escape(WORKFLOW_OWNED_MULTI_AGENT_V2_MARKER)
+    + r"\s*$"
+)
+_OWNED_V2_CAPACITY = re.compile(
+    r"^\s*max_concurrent_threads_per_session\s*=\s*([0-9]+)\s+"
+    + re.escape(WORKFLOW_OWNED_V2_CAPACITY_MARKER)
+    + r"\s*$"
+)
+_OWNED_FEATURES_HEADER = re.compile(
+    r"^\s*\[features]\s+"
+    + re.escape(WORKFLOW_CREATED_FEATURES_MARKER)
+    + r"\s*$"
+)
+_OWNED_V2_TABLE_HEADER = re.compile(
+    r"^\s*\[features\.multi_agent_v2]\s+"
+    + re.escape(WORKFLOW_CREATED_V2_TABLE_MARKER)
     + r"\s*$"
 )
 
@@ -359,12 +397,22 @@ def _root_inline_agents_lines(lines: list[str]) -> list[int]:
     ]
 
 
-def _has_agents_subtable(lines: list[str]) -> bool:
-    return any(
-        match and match.group(1).startswith("agents.")
-        for line in lines
-        if (match := _SECTION.match(line))
-    )
+def _root_dotted_features_lines(lines: list[str]) -> list[int]:
+    end = _root_table_end(lines)
+    return [
+        index
+        for index in range(end)
+        if _ROOT_DOTTED_FEATURES.match(lines[index])
+    ]
+
+
+def _root_inline_features_lines(lines: list[str]) -> list[int]:
+    end = _root_table_end(lines)
+    return [
+        index
+        for index in range(end)
+        if _ROOT_INLINE_FEATURES.match(lines[index])
+    ]
 
 
 def _owned_max_threads_lines(
@@ -383,39 +431,201 @@ def _owned_max_threads_lines(
     return explicit + dotted
 
 
-def _reject_enabled_multi_agent_v2(parsed: dict[str, Any]) -> None:
-    features = parsed.get("features")
-    if not isinstance(features, dict) or "multi_agent_v2" not in features:
-        return
-    setting = features["multi_agent_v2"]
+def _multi_agent_v2_enabled(setting: Any) -> bool:
     if isinstance(setting, bool):
-        enabled = setting
+        return setting
     elif isinstance(setting, dict):
         if "enabled" not in setting or not isinstance(setting["enabled"], bool):
             raise ValidationError(
                 "features.multi_agent_v2 must explicitly use a boolean enabled value"
             )
-        enabled = setting["enabled"]
+        return setting["enabled"]
     else:
         raise ValidationError("features.multi_agent_v2 must be a boolean or table")
-    if enabled:
+
+
+def _multi_agent_v2_capacity(setting: Any) -> Any:
+    if not isinstance(setting, dict):
+        return None
+    return setting.get("max_concurrent_threads_per_session")
+
+
+def _validate_generated_config_postconditions(
+    generated: dict[str, Any], config: WorkflowConfig
+) -> None:
+    features = generated.get("features")
+    setting = (
+        features.get("multi_agent_v2")
+        if isinstance(features, dict)
+        else None
+    )
+    try:
+        v2_enabled = _multi_agent_v2_enabled(setting)
+    except ValidationError:
+        v2_enabled = False
+    if setting is None or not v2_enabled:
         raise ValidationError(
-            "codex-workflow-custom targets Codex 0.144 V1 and cannot set "
-            "agents.max_threads while multi-agent V2 is explicitly enabled; "
-            "disable V2 explicitly before configuring this workflow"
+            "generated Codex configuration did not materialize the required "
+            "Multi-Agent V2 setting safely"
+        )
+
+    required = config.max_concurrent_workers + 1
+    capacity = _multi_agent_v2_capacity(setting)
+    if (
+        not isinstance(capacity, int)
+        or isinstance(capacity, bool)
+        or capacity != required
+    ):
+        raise ValidationError(
+            "generated Codex configuration did not materialize the required "
+            "features.multi_agent_v2.max_concurrent_threads_per_session "
+            "capacity safely"
+        )
+
+    agents = generated.get("agents")
+    if isinstance(agents, dict) and "max_threads" in agents:
+        raise ValidationError(
+            "generated Codex configuration retained legacy agents.max_threads "
+            "while Multi-Agent V2 is enabled"
         )
 
 
-def _owned_agents_header() -> str:
-    return f"[agents] {WORKFLOW_CREATED_AGENTS_MARKER}"
+def _owned_multi_agent_v2_lines(
+    lines: list[str], bounds: tuple[int, int] | None
+) -> list[int]:
+    explicit = [
+        index
+        for index in _key_lines(lines, bounds, "multi_agent_v2")
+        if _OWNED_MULTI_AGENT_V2.fullmatch(lines[index])
+    ]
+    dotted = [
+        index
+        for index in _root_dotted_features_lines(lines)
+        if _OWNED_DOTTED_MULTI_AGENT_V2.fullmatch(lines[index])
+    ]
+    return explicit + dotted
 
 
-def _owned_max_threads_line(value: int) -> str:
-    return f"max_threads = {value} {WORKFLOW_OWNED_MAX_THREADS_MARKER}"
+def _owned_v2_enabled_lines(
+    lines: list[str], bounds: tuple[int, int] | None
+) -> list[int]:
+    return [
+        index
+        for index in _key_lines(lines, bounds, "enabled")
+        if _OWNED_V2_ENABLED.fullmatch(lines[index])
+    ]
 
 
-def _owned_dotted_max_threads_line(value: int) -> str:
-    return f"agents.max_threads = {value} {WORKFLOW_OWNED_MAX_THREADS_MARKER}"
+def _owned_v2_capacity_lines(
+    lines: list[str], bounds: tuple[int, int] | None
+) -> list[int]:
+    return [
+        index
+        for index in _key_lines(
+            lines, bounds, "max_concurrent_threads_per_session"
+        )
+        if _OWNED_V2_CAPACITY.fullmatch(lines[index])
+    ]
+
+
+def _patch_required_multi_agent_v2(
+    lines: list[str],
+    features: dict[str, Any] | None,
+    feature_bounds: tuple[int, int] | None,
+    v2_bounds: tuple[int, int] | None,
+    required_capacity: int,
+) -> None:
+    legacy_owned_lines = _owned_multi_agent_v2_lines(lines, feature_bounds)
+    if legacy_owned_lines:
+        lines[:] = _remove_owned_legacy_v2(lines)
+        _append_owned_v2_table(lines, required_capacity)
+        return
+
+    has_existing = isinstance(features, dict) and "multi_agent_v2" in features
+    if not has_existing:
+        if _root_inline_features_lines(lines):
+            raise ValidationError(
+                "features is an inline table without multi_agent_v2; "
+                "codex-workflow-custom cannot enable V2 without restructuring "
+                "the user-owned inline table"
+            )
+        _append_owned_v2_table(lines, required_capacity)
+        return
+
+    setting = features["multi_agent_v2"]
+    if isinstance(setting, bool):
+        if not setting:
+            raise ValidationError(
+                "features.multi_agent_v2 is explicitly disabled by a "
+                "user/OpenCodex-owned value, but codex-workflow-custom requires "
+                "Multi-Agent V2; enable or remove that value explicitly"
+            )
+        raise ValidationError(
+            "user/OpenCodex-owned scalar features.multi_agent_v2=true has no V2 "
+            "session capacity; use a table with enabled=true and "
+            "max_concurrent_threads_per_session, or remove it explicitly"
+        )
+
+    enabled = _multi_agent_v2_enabled(setting)
+    owned_enabled = _owned_v2_enabled_lines(lines, v2_bounds)
+    if not enabled:
+        if not owned_enabled:
+            raise ValidationError(
+                "features.multi_agent_v2 is explicitly disabled by a "
+                "user/OpenCodex-owned value, but codex-workflow-custom requires "
+                "Multi-Agent V2; enable or remove that value explicitly"
+            )
+        lines[owned_enabled[0]] = _owned_v2_enabled_line()
+
+    capacity = _multi_agent_v2_capacity(setting)
+    has_capacity = "max_concurrent_threads_per_session" in setting
+    owned_capacity = _owned_v2_capacity_lines(lines, v2_bounds)
+    if has_capacity:
+        if not isinstance(capacity, int) or isinstance(capacity, bool):
+            raise ValidationError(
+                "features.multi_agent_v2.max_concurrent_threads_per_session "
+                "must be an integer"
+            )
+        if owned_capacity:
+            lines[owned_capacity[0]] = _owned_v2_capacity_line(required_capacity)
+        elif capacity != required_capacity:
+            raise ValidationError(
+                "features.multi_agent_v2.max_concurrent_threads_per_session is "
+                f"already set to {capacity}, but codex-workflow-custom requires "
+                f"{required_capacity}; change or remove the user/OpenCodex-owned "
+                "value explicitly"
+            )
+        return
+
+    if v2_bounds is None:
+        raise ValidationError(
+            "user/OpenCodex-owned inline features.multi_agent_v2 has no V2 "
+            "session capacity; use an explicit [features.multi_agent_v2] table "
+            "or add max_concurrent_threads_per_session explicitly"
+        )
+    _, end = v2_bounds
+    lines.insert(end, _owned_v2_capacity_line(required_capacity))
+
+
+def _owned_v2_table_header() -> str:
+    return f"[features.multi_agent_v2] {WORKFLOW_CREATED_V2_TABLE_MARKER}"
+
+
+def _owned_v2_enabled_line() -> str:
+    return f"enabled = true {WORKFLOW_OWNED_MULTI_AGENT_V2_MARKER}"
+
+
+def _owned_v2_capacity_line(value: int) -> str:
+    return (
+        f"max_concurrent_threads_per_session = {value} "
+        f"{WORKFLOW_OWNED_V2_CAPACITY_MARKER}"
+    )
+
+
+def _append_owned_v2_table(lines: list[str], required_capacity: int) -> None:
+    lines.append(_owned_v2_table_header())
+    lines.append(_owned_v2_enabled_line())
+    lines.append(_owned_v2_capacity_line(required_capacity))
 
 
 def _render_lines(lines: list[str], original: str) -> str:
@@ -430,9 +640,10 @@ def _validate_ownership_markers(
     lines: list[str], bounds: tuple[int, int] | None
 ) -> None:
     max_lines = _key_lines(lines, bounds, "max_threads")
-    valid_setting_lines = {
+    valid_explicit_setting_lines = {
         index for index in max_lines if _OWNED_MAX_THREADS.fullmatch(lines[index])
     }
+    valid_setting_lines = set(valid_explicit_setting_lines)
     valid_setting_lines.update(
         index
         for index in _root_dotted_agents_lines(lines)
@@ -456,6 +667,96 @@ def _validate_ownership_markers(
     }
     if header_marker_lines != valid_header_lines:
         raise ValidationError("malformed codex-workflow-custom agents-table marker")
+    if valid_header_lines and len(valid_explicit_setting_lines) != 1:
+        raise ValidationError(
+            "workflow-created [agents] table ownership drift: expected one "
+            "workflow-owned agents.max_threads setting"
+        )
+
+
+def _validate_v2_ownership_markers(
+    lines: list[str],
+    feature_bounds: tuple[int, int] | None,
+    v2_bounds: tuple[int, int] | None,
+) -> None:
+    setting_lines = _key_lines(lines, feature_bounds, "multi_agent_v2")
+    valid_explicit_legacy_lines = {
+        index
+        for index in setting_lines
+        if _OWNED_MULTI_AGENT_V2.fullmatch(lines[index])
+    }
+    valid_legacy_lines = set(valid_explicit_legacy_lines)
+    valid_legacy_lines.update(
+        index
+        for index in _root_dotted_features_lines(lines)
+        if _OWNED_DOTTED_MULTI_AGENT_V2.fullmatch(lines[index])
+    )
+    valid_enabled_lines = set(_owned_v2_enabled_lines(lines, v2_bounds))
+    valid_setting_lines = valid_legacy_lines | valid_enabled_lines
+    marker_lines = {
+        index
+        for index, line in enumerate(lines)
+        if WORKFLOW_OWNED_MULTI_AGENT_V2_MARKER in line
+    }
+    if marker_lines != valid_setting_lines:
+        raise ValidationError("malformed codex-workflow-custom V2 ownership marker")
+
+    valid_capacity_lines = set(_owned_v2_capacity_lines(lines, v2_bounds))
+    capacity_marker_lines = {
+        index
+        for index, line in enumerate(lines)
+        if WORKFLOW_OWNED_V2_CAPACITY_MARKER in line
+    }
+    if capacity_marker_lines != valid_capacity_lines:
+        raise ValidationError(
+            "malformed codex-workflow-custom V2 capacity ownership marker"
+        )
+
+    valid_feature_header_lines: set[int] = set()
+    if (
+        feature_bounds is not None
+        and _OWNED_FEATURES_HEADER.fullmatch(lines[feature_bounds[0]])
+    ):
+        valid_feature_header_lines.add(feature_bounds[0])
+    feature_header_marker_lines = {
+        index
+        for index, line in enumerate(lines)
+        if WORKFLOW_CREATED_FEATURES_MARKER in line
+    }
+    if feature_header_marker_lines != valid_feature_header_lines:
+        raise ValidationError("malformed codex-workflow-custom features-table marker")
+    if valid_feature_header_lines and len(valid_explicit_legacy_lines) != 1:
+        raise ValidationError(
+            "workflow-created [features] table ownership drift: expected one "
+            "workflow-owned features.multi_agent_v2 setting"
+        )
+
+    valid_v2_header_lines: set[int] = set()
+    if (
+        v2_bounds is not None
+        and _OWNED_V2_TABLE_HEADER.fullmatch(lines[v2_bounds[0]])
+    ):
+        valid_v2_header_lines.add(v2_bounds[0])
+    v2_header_marker_lines = {
+        index
+        for index, line in enumerate(lines)
+        if WORKFLOW_CREATED_V2_TABLE_MARKER in line
+    }
+    if v2_header_marker_lines != valid_v2_header_lines:
+        raise ValidationError(
+            "malformed codex-workflow-custom V2 feature-table marker"
+        )
+    if valid_v2_header_lines:
+        if len(valid_enabled_lines) != 1 or len(valid_capacity_lines) != 1:
+            raise ValidationError(
+                "workflow-created [features.multi_agent_v2] table ownership "
+                "drift: expected owned enabled and capacity settings"
+            )
+    elif valid_enabled_lines:
+        raise ValidationError(
+            "workflow-owned V2 enabled setting requires a workflow-created "
+            "[features.multi_agent_v2] table"
+        )
 
 
 def remove_workflow_owned_config(text: str) -> str:
@@ -467,30 +768,129 @@ def remove_workflow_owned_config(text: str) -> str:
     except tomllib.TOMLDecodeError as error:
         raise ValidationError(f"existing Codex config is invalid TOML: {error}") from error
 
-    if (
-        WORKFLOW_OWNED_MAX_THREADS_MARKER not in text
-        and WORKFLOW_CREATED_AGENTS_MARKER not in text
-    ):
+    ownership_markers = (
+        WORKFLOW_OWNED_MAX_THREADS_MARKER,
+        WORKFLOW_CREATED_AGENTS_MARKER,
+        WORKFLOW_OWNED_MULTI_AGENT_V2_MARKER,
+        WORKFLOW_CREATED_FEATURES_MARKER,
+        WORKFLOW_OWNED_V2_CAPACITY_MARKER,
+        WORKFLOW_CREATED_V2_TABLE_MARKER,
+    )
+    if not any(marker in text for marker in ownership_markers):
         return text
 
     lines = text.splitlines()
+    lines = _remove_owned_v2(lines)
+    lines = _remove_owned_agents(lines)
+
+    rendered = _render_lines(lines, text) if lines else ""
+    try:
+        tomllib.loads(rendered)
+    except tomllib.TOMLDecodeError as error:
+        raise ValidationError(f"generated Codex config is invalid TOML: {error}") from error
+    return rendered
+
+
+def _remove_owned_v2(lines: list[str]) -> list[str]:
+    feature_bounds = _section_bounds(lines, "features")
+    v2_bounds = _section_bounds(lines, "features.multi_agent_v2")
+    _validate_v2_ownership_markers(lines, feature_bounds, v2_bounds)
+
+    lines = _remove_owned_legacy_v2(lines)
+    v2_bounds = _section_bounds(lines, "features.multi_agent_v2")
+    has_new_markers = any(
+        marker in line
+        for line in lines
+        for marker in (
+            WORKFLOW_OWNED_V2_CAPACITY_MARKER,
+            WORKFLOW_CREATED_V2_TABLE_MARKER,
+        )
+    )
+    if not has_new_markers:
+        return lines
+    if v2_bounds is None:
+        raise ValidationError(
+            "workflow-owned V2 capacity requires a [features.multi_agent_v2] table"
+        )
+
+    owned_enabled = _owned_v2_enabled_lines(lines, v2_bounds)
+    owned_capacity = _owned_v2_capacity_lines(lines, v2_bounds)
+    start, end = v2_bounds
+    created_table = WORKFLOW_CREATED_V2_TABLE_MARKER in lines[start]
+    if not created_table:
+        if owned_enabled or len(owned_capacity) != 1:
+            raise ValidationError(
+                "expected one workflow-owned V2 capacity setting in the "
+                "user-owned [features.multi_agent_v2] table"
+            )
+        return [
+            line
+            for index, line in enumerate(lines)
+            if index != owned_capacity[0]
+        ]
+
+    owned_lines = set(owned_enabled + owned_capacity)
+    retained_body = [
+        line
+        for index, line in enumerate(lines[start + 1 : end], start + 1)
+        if index not in owned_lines
+    ]
+    if created_table and not any(line.strip() for line in retained_body):
+        return lines[:start] + lines[end:]
+    header = "[features.multi_agent_v2]"
+    return lines[:start] + [header] + retained_body + lines[end:]
+
+
+def _remove_owned_legacy_v2(lines: list[str]) -> list[str]:
+    bounds = _section_bounds(lines, "features")
+    owned_lines = _owned_multi_agent_v2_lines(lines, bounds)
+    if not owned_lines:
+        return lines
+    if len(owned_lines) != 1:
+        raise ValidationError(
+            "expected one legacy workflow-owned features.multi_agent_v2 setting"
+        )
+    if _OWNED_DOTTED_MULTI_AGENT_V2.fullmatch(lines[owned_lines[0]]):
+        return [
+            line for index, line in enumerate(lines) if index != owned_lines[0]
+        ]
+
+    if bounds is None:
+        raise ValidationError(
+            "legacy workflow-owned V2 setting requires a [features] table"
+        )
+    start, end = bounds
+    created_table = WORKFLOW_CREATED_FEATURES_MARKER in lines[start]
+    retained_body = [
+        line
+        for index, line in enumerate(lines[start + 1 : end], start + 1)
+        if index not in owned_lines
+    ]
+    if created_table and not any(line.strip() for line in retained_body):
+        return lines[:start] + lines[end:]
+    header = "[features]" if created_table else lines[start]
+    return lines[:start] + [header] + retained_body + lines[end:]
+
+
+def _remove_owned_agents(lines: list[str]) -> list[str]:
     bounds = _section_bounds(lines, "agents")
     _validate_ownership_markers(lines, bounds)
+    has_markers = any(
+        marker in line
+        for line in lines
+        for marker in (
+            WORKFLOW_OWNED_MAX_THREADS_MARKER,
+            WORKFLOW_CREATED_AGENTS_MARKER,
+        )
+    )
+    if not has_markers:
+        return lines
+
     owned_lines = _owned_max_threads_lines(lines, bounds)
     if len(owned_lines) != 1:
         raise ValidationError("expected one workflow-owned agents.max_threads setting")
     if _OWNED_DOTTED_MAX_THREADS.fullmatch(lines[owned_lines[0]]):
-        result = [
-            line for index, line in enumerate(lines) if index != owned_lines[0]
-        ]
-        rendered = _render_lines(result, text) if result else ""
-        try:
-            tomllib.loads(rendered)
-        except tomllib.TOMLDecodeError as error:
-            raise ValidationError(
-                f"generated Codex config is invalid TOML: {error}"
-            ) from error
-        return rendered
+        return [line for index, line in enumerate(lines) if index != owned_lines[0]]
 
     if bounds is None:
         raise ValidationError("workflow-owned max_threads requires an [agents] table")
@@ -505,10 +905,4 @@ def remove_workflow_owned_config(text: str) -> str:
     else:
         header = "[agents]" if created_table else lines[start]
         result = lines[:start] + [header] + retained_body + lines[end:]
-
-    rendered = _render_lines(result, text) if result else ""
-    try:
-        tomllib.loads(rendered)
-    except tomllib.TOMLDecodeError as error:
-        raise ValidationError(f"generated Codex config is invalid TOML: {error}") from error
-    return rendered
+    return result

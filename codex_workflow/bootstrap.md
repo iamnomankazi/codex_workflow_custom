@@ -4,6 +4,36 @@ Use this guide only for the first installation from a universal GitHub Release
 ZIP. Python 3.11 or newer is required. On Windows, use the equivalent
 `py -3.11` invocation and native paths.
 
+## Multi-Agent V2 prerequisite
+
+Before validating or installing the package, verify that the active OpenCodex
+runtime is the empirically tested version `2.21.0` and that its effective
+configuration already contains:
+
+```json
+{
+  "agentTaskRecovery": {
+    "enabled": true,
+    "model": "gpt-5.6-sol",
+    "timeoutMs": 45000,
+    "cacheEntries": 200
+  }
+}
+```
+
+This recovery behavior is required for DeepSeek V4 Flash/Pro Multi-Agent V2
+tasks. The workflow does not own or modify OpenCodex configuration and must not
+update OpenCodex during installation. Stop before bootstrap and report the
+missing prerequisite if the active version or effective recovery configuration
+cannot be verified.
+
+The installed workflow keeps `max_concurrent_workers` as child-worker
+capacity. Its V2 config materialization adds one Parent slot, so the default 20
+children produce
+`features.multi_agent_v2.max_concurrent_threads_per_session = 21`.
+`agents.max_threads` is legacy V1 capacity: exact workflow-owned values are
+migrated, unowned values fail closed, and `agents.enabled` remains unmanaged.
+
 Verify `codex_workflow-<version>.zip` against `SHA256SUMS`, extract it into a
 temporary directory, and require exactly one top-level `codex_workflow/`
 directory. Validate the package first:

@@ -8,7 +8,7 @@ You are the main agent.
 
 The main agent performs planning, implementation, and verification. Do not
 delegate those tasks. For a substantive deployment, the only subagents are the
-persistent Explorer defined by `explorer_companion.md` and one fresh
+persistent Explorer defined by `<Codex home>/codex_workflow/explorer_companion.md` and one fresh
 `end_of_session` worker that reconciles the complete documentation framework
 during automatic closure.
 
@@ -60,7 +60,7 @@ input. Never present partial work as complete.
 ## Automatic Deployment Handoff
 
 Before the final response that completes, pauses, or blocks the deployment,
-follow `~/.codex/codex_workflow/end_of_session.md` exactly once and wait for its
+follow `<Codex home>/codex_workflow/end_of_session.md` exactly once and wait for its
 fresh worker. Pass only the route, a unique deployment ID, and closure state;
 the automatic handoff context fork supplies the main-agent history. Relay its
 result; do not duplicate its documentation, status, Git, or statistics work. A

@@ -7,6 +7,18 @@ Supported command forms:
 Python 3.11 or newer is required. The lifecycle CLI applies a validated update
 directly.
 
+Before applying an update that enables Multi-Agent V2, verify the active
+OpenCodex runtime remains at the tested version `2.21.0` with
+`agentTaskRecovery` enabled using model `gpt-5.6-sol`, `timeoutMs` `45000`, and
+`cacheEntries` `200`. Stop if that prerequisite is absent. The workflow does
+not own or modify OpenCodex configuration and does not update OpenCodex.
+
+During materialization, `max_concurrent_workers` remains the child-worker
+limit and V2 total session capacity is written as that value plus one under
+`features.multi_agent_v2.max_concurrent_threads_per_session`. Exact
+workflow-owned legacy `agents.max_threads` values are migrated; unowned legacy
+values stop the update, and `agents.enabled` is never managed.
+
 ## Source
 
 The script queries GitHub Releases, selects the highest
@@ -18,10 +30,11 @@ release.
 
 ## Update
 
-Run:
+Run the lifecycle CLI, resolving the Codex home from a non-empty
+`CODEX_HOME` environment variable when it is set; otherwise use `~/.codex`:
 
 ```text
-python3 ~/.codex/codex_workflow/workflow.py update --project <project>
+python3 <Codex home>/codex_workflow/workflow.py update --project <project>
 ```
 
 For migration from a pre-script installation, run the incoming package's

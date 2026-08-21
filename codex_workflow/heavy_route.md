@@ -14,6 +14,14 @@ Use after Heavy is selected under `AGENTS.md`.
 Create only enabled workers and obey these limits.
 <!-- codex-workflow-effective-config-end -->
 
+## Role-aware spawning (mandatory)
+
+Every initial `spawn_agent` call must pass both the installed `agent_type` and a stable `task_name`; a task name alone is invalid role binding.
+Required shape: `spawn_agent(agent_type="<role>", task_name="<stable identity>", ...)`.
+Use exact bindings: Explorer `agent_type="explorer"`; routine Luna `agent_type="executor_luna"`; Tester `agent_type="tester"`; serious Pro `agent_type="executor_pro"`; closure `agent_type="end_of_session"`.
+Follow-ups use `followup_task` on the same canonical worker and never respawn; task identity does not select a role.
+Do not pass `model` or `reasoning_effort` for normal Heavy workers; the installed role TOML remains the model/provider authority.
+
 ## Main Agent: Knowledge Plane
 
 You are the main agent.
@@ -26,26 +34,24 @@ user communication.
 Workers own operational context: Explorer gathers and refines discovery;
 executors own package-local investigation, implementation, self-check, and
 repair; testers own test evidence and failure diagnosis; doc-writers own
-assigned durable documentation. The End-of-Session worker owns final Git and
-complete documentation-framework reconciliation during automatic deployment
-closure.
+assigned durable documentation. The End-of-Session worker owns final Git-state
+inspection/reporting and complete documentation-framework reconciliation during
+automatic deployment closure.
 
 The main agent's default tool use should be coordination, planning/status,
 compact commands, and critical source or evidence inspection. Delegate routine
-repository discovery, implementation, diagnostics, full logs, large diffs,
-external research, test output, and deployment diagnostics. Specialized tools
-should be used by the role that owns that context when practical. The main
-agent retains access to critical evidence but opens it only for a material
-decision, uncertainty, contradiction, missing proof, or high-risk boundary.
+discovery, implementation, diagnostics, full logs, large diffs, external
+research, and deployment diagnostics to the role that owns that context. The
+main agent opens critical evidence only for a material decision, uncertainty,
+contradiction, missing proof, or high-risk boundary.
 
 Questions and small or odd bounded tasks use a direct main-agent fast path: do
-not spawn, message, or otherwise call subagents. Do not create work merely to
-use a worker. This fast path also skips End-of-Session and worker statistics
-entirely.
+not spawn, message, or otherwise call subagents and do not create work merely
+to use a worker. This fast path also skips End-of-Session and worker statistics.
 
 ## Planning and Context Gateway
 
-Initialize Explorer as required by `explorer_companion.md`. Before allocating
+Initialize Explorer as required by `<Codex home>/codex_workflow/explorer_companion.md`. Before allocating
 packages, give it the investigation questions and request a planning brief.
 Use that brief to form the architecture, acceptance matrix, dependency order,
 ownership map, and package guidance; do not repeat Explorer's raw discovery.
@@ -95,18 +101,16 @@ execution-complete by adding an **Execution Guide** with:
 2. An ordered implementation sequence. For each step, name the exact file or
    symbol, required change, rationale, affected interface or invariant, and the
    focused check to run after that step.
-3. Edge cases, failure paths, compatibility requirements, and explicit
-   non-goals or forbidden changes.
-4. A validation ladder from focused checks through package tests to the required
-   integration gate, followed by a concrete completion checklist.
+3. Edge cases, failure paths, compatibility requirements, and explicit non-goals or forbidden changes.
+4. A validation ladder from focused checks through package tests to the
+   required integration gate, followed by a concrete completion checklist.
 5. Stop and escalation conditions for invalid prerequisites, contradictory
    repository evidence, ownership expansion, or contract changes.
 
 Do not add this Execution Guide requirement to packets for `executor_terra`,
 `executor_sol`, or any non-Luna role. Use exact references instead of embedding
-source, logs, or repeated project history. Resolve known implementation choices
-in the guide; do not make Luna rediscover decisions already settled by the main
-agent.
+source, logs, or repeated project history; resolve known choices in the guide so
+Luna does not rediscover settled decisions.
 
 Adapt the knowledge supplied by role:
 
@@ -138,18 +142,16 @@ Pair each verification package with the responsible executor and both canonical 
 For Luna or Terra, Tester sends a focused `followup_task` defect packet to the same responsible worker. That executor repairs within its capsule,
 self-checks, then sends completion evidence via `send_message` to the same waiting
 tester. That mailbox, not the executor's ordinary final, wakes Tester to rerun the
-failed criterion and regressions; Parent is not the routine native-executor relay.
-Missing tester identity or failed delivery goes in the executor's parent-visible final; never stall or invent a replacement.
+failed criterion and regressions; Parent is not the routine native-executor relay. Missing tester identity or failed delivery goes in the executor's parent-visible final; never stall or invent a replacement.
 For Luna, use the same Luna worker for repair #1. If the criterion still fails
 without a structural condition, use the same Luna worker for repair #2, direct
 message, and recheck. Never send a third routine Luna repair for that criterion.
 Count only a focused production-repair request reaching Luna, not implementation,
 self-check, tester corrections, wrong-test reruns, evidence-only contact,
-communication-only `send_message`, `wait_agent`, early escalation, or a new or
-materially re-scoped criterion. Before either Luna repair, return capsule/invariant
+communication-only `send_message`, `wait_agent`, early escalation, or a re-scoped criterion.
+Before either Luna repair, return capsule/invariant
 conflict, cross-package contract or architecture change, expanded ownership,
-security risk, or migration risk to Parent immediately. After repair #2 still fails,
-tester sends the parent a compact serious packet with task/package/iteration,
+security risk, or migration risk to Parent immediately. After repair #2 still fails, tester sends the parent a compact serious packet with task/package/iteration,
 criterion/reproduction, observed/expected behavior, affected contract, focused
 evidence, both outcomes, and scope or risk. Tester never creates Pro.
 For manually selected Terra, use one same-Terra `followup_task`, self-check, direct
@@ -162,8 +164,7 @@ implementation, failed criterion, both Luna outcomes, tester evidence, affected
 contracts, repair surface, regression boundary, and verification—not Luna's Guide
 or raw history. The parent retains Pro's canonical identity and spawn ownership.
 Every Pro final returns to the parent, which thin-relays it unchanged via
-`send_message` to the same waiting tester; that mailbox wakes tester to recheck.
-Later defects use `followup_task` deltas to the same Pro and repeat this relay.
+`send_message` to the same waiting tester; that mailbox wakes tester to recheck, and later defects use `followup_task` deltas to the same Pro and repeat this relay.
 Never respawn Pro. If unavailable, conflicted, or failed, return evidence to Parent;
 do not automatically invoke `executor_sol` or `reviewer_pro`.
 
@@ -197,10 +198,9 @@ conflicting evidence invalidate them.
 
 - Executor self-check precedes independent tester verification. Require
   meaningful tests for behavior changes, bug fixes, important modules, and
-  public contracts.
-- Prefer deterministic local fixtures. Never weaken validation, claim unrun
-  checks passed, accept unrelated scope, or allow silent error suppression or
-  unplanned public API/schema breaks.
+  public contracts. Prefer deterministic local fixtures; never weaken
+  validation, claim unrun checks passed, accept unrelated scope, or allow
+  silent error suppression or unplanned public API/schema breaks.
 - After one evidence-free response, send one focused retry. Replace the worker
   after a second; if replacement also lacks evidence, report the limitation and
   take over only the smallest critical step transparently.
@@ -216,9 +216,8 @@ conflicting evidence invalidate them.
 
 After all package workers reach a terminal state, and before the final response
 that completes, pauses, or blocks the deployment, follow
-`~/.codex/codex_workflow/end_of_session.md` exactly once. Pass only the route, a
+`<Codex home>/codex_workflow/end_of_session.md` exactly once, passing only the route, a
 unique deployment ID, and closure state; the automatic handoff context fork
 supplies the main-agent history. Wait and relay the fresh worker's report
-without duplicating its work. A later substantive deployment gets a new ID and
-handoff. The direct fast path calls no worker, including Explorer or
-End-of-Session, and emits no statistics.
+without duplicating its work; a later substantive deployment gets a new ID and
+handoff. The direct fast path calls no worker and emits no statistics.

@@ -19,11 +19,12 @@ turns so the worker inherits the deployment context while retaining its Luna
 xhigh model; its TOML contains the full procedure.
 
 The worker alone reconciles the complete `agent_docs/` framework, performs
-compact closing checks, handles Git staging and commit, and returns the final
-handoff report and statistics table. Do not call a second documentation worker
-or duplicate these steps. Wait for the worker, then relay its result. Create a
-fresh uniquely named worker for every later substantive deployment in the same
-session.
+compact closing checks, inspects and reports Git state read-only without
+changing it, and returns the final handoff report and statistics table. Git
+staging, committing, pushing, resetting, stashing, or any equivalent mutation is
+forbidden; an unwritable `.git` directory is not a handoff failure. Do not call a second documentation worker or duplicate these steps. Wait for the
+worker, then relay its result. Create a fresh uniquely named worker for every
+later substantive deployment in the same session.
 
 If the worker cannot be created or is blocked, report that limitation. Do not
 silently transfer the handoff to Explorer or another role.

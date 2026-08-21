@@ -12,14 +12,26 @@ and built-in context and implementation-progress management across sessions.
 
 ## 1. Quick installation ⚙️
 
-Requires Python 3.11 or newer for deterministic lifecycle operations.
+Requires Python 3.11 or newer for deterministic lifecycle operations. The
+Multi-Agent V2 workflow also requires the tested OpenCodex `2.21.0` runtime
+with effective external configuration `multiAgentMode` = `"v2"`,
+`syncCodexSubagentDefaults` = `false`, and `agentTaskRecovery` enabled through
+`gpt-5.6-sol` (`timeoutMs`: `45000`, `cacheEntries`: `200`). V2 mode is
+required for the intended V2 worker behavior; `syncCodexSubagentDefaults =
+false` avoids incompatible default-subagent writes; recovery is required
+because DeepSeek workers cannot directly consume encrypted V2 task content.
+The workflow does not configure or update OpenCodex; the bundled bootstrap
+stops if this prerequisite cannot be verified.
+The persistent worker limit counts children; generated V2 session capacity adds
+one Parent slot (20 children becomes 21 total), never emits
+`agents.max_threads`, and leaves `agents.enabled` unmanaged.
 
 ### Open Codex CLI / Codex app from your project directory 
 
 ▶️ Send:
 
 ```text
-Download and extract the latest `codex_workflow-<version>.zip` asset (not GitHub's Source code archive) from https://github.com/viettran-edgeAI/codex_workflow/releases. Verify it against `SHA256SUMS`, then read the bundled `codex_workflow/bootstrap.md` and follow it to complete the initial installation.
+Download and extract the latest `codex_workflow-<version>.zip` asset (not GitHub's Source code archive) from https://github.com/iamnomankazi/codex_workflow_custom/releases. Verify it against `SHA256SUMS`, then read the bundled `codex_workflow/bootstrap.md` and follow it to complete the initial installation.
 ```
 > ⭐ Recommended: use 5.6 Luna xhigh for installation. 
 

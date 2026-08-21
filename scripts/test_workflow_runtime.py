@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import contextlib
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -178,6 +179,7 @@ class MarkerTests(unittest.TestCase):
         self.assertIn("planning brief", explorer)
         self.assertIn("knowledge-delta brief", explorer)
         self.assertIn("distinct task names", explorer)
+        self.assertIn('agent_type="explorer"', explorer)
         self.assertEqual(explorer.count('task_name="explorer_companion"'), 1)
         self.assertIn('fork_turns="none"', explorer)
         self.assertIn("Reuse its thread", explorer)
@@ -190,6 +192,7 @@ class MarkerTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('task_name="end_of_session_<deployment_id>"', handoff_contract)
+        self.assertIn('agent_type="end_of_session"', handoff_contract)
         self.assertIn("after every substantive Medium or Heavy", handoff_contract)
         self.assertIn("inherits the deployment context", handoff_contract)
         self.assertIn("complete `agent_docs/` framework", handoff_contract)
@@ -241,8 +244,32 @@ class MarkerTests(unittest.TestCase):
             encoding="utf-8"
         )
         bootstrap = (PACKAGE / "bootstrap.md").read_text(encoding="utf-8")
+        update = (PACKAGE / "update.md").read_text(encoding="utf-8")
         install = (PACKAGE / "install.md").read_text(encoding="utf-8")
         usage = (ROOT / "workflow_usage.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        recovery_contract = "\n".join((bootstrap, update, usage, readme))
+        for required_recovery_value in (
+            "2.21.0",
+            "agentTaskRecovery",
+            "gpt-5.6-sol",
+            "45000",
+            "200",
+        ):
+            self.assertIn(required_recovery_value, recovery_contract)
+        bootstrap_contract = " ".join(bootstrap.split())
+        update_contract = " ".join(update.split())
+        self.assertIn("Stop before bootstrap", bootstrap_contract)
+        self.assertIn(
+            "does not own or modify OpenCodex configuration", bootstrap_contract
+        )
+        self.assertIn(
+            "does not own or modify OpenCodex configuration", update_contract
+        )
+        self.assertIn("workflow-level read-only roles", usage)
+        self.assertIn("permission inheritance", usage)
+        self.assertIn("worker-policy violation", usage)
+        self.assertIn("does not add or manage `agents.enabled`", usage)
         self.assertIn("at most two focused", tester)
         self.assertIn("same Luna worker", tester)
         self.assertIn("Never\n  request a third routine Luna repair", tester)
@@ -476,6 +503,60 @@ class SafetyTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             read_string_list({"owned_runtime_files": None}, "owned_runtime_files")
 
+    def test_heavy_initial_spawns_bind_installed_roles(self) -> None:
+        heavy = " ".join(
+            (PACKAGE / "heavy_route.md").read_text(encoding="utf-8").split()
+        )
+        self.assertIn(
+            "Every initial `spawn_agent` call must pass both the installed `agent_type` and a stable `task_name`",
+            heavy,
+        )
+        self.assertIn(
+            'Required shape: `spawn_agent(agent_type="<role>", task_name="<stable identity>", ...)`',
+            heavy,
+        )
+        for label, role in (
+            ("Explorer", "explorer"),
+            ("routine Luna", "executor_luna"),
+            ("Tester", "tester"),
+            ("serious Pro", "executor_pro"),
+            ("closure", "end_of_session"),
+        ):
+            with self.subTest(label=label):
+                self.assertIn(f'{label} `agent_type="{role}"`', heavy)
+                definition = tomllib.loads(
+                    (PACKAGE / "agents" / f"{role}.toml").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                self.assertEqual(definition["name"], role)
+        self.assertIn("task identity does not select a role", heavy)
+        self.assertIn(
+            "the installed role TOML remains the model/provider authority", heavy
+        )
+
+    def test_end_of_session_contract_is_git_read_only(self) -> None:
+        forbidden = re.compile(
+            r"\bgit\s+(?:add|commit|push|reset|stash|checkout|clean)\b",
+            re.IGNORECASE,
+        )
+        for relative in ("end_of_session.md", "agents/end_of_session.toml"):
+            with self.subTest(relative=relative):
+                text = (PACKAGE / relative).read_text(encoding="utf-8")
+                normalized = " ".join(text.split()).lower()
+                self.assertIn("read-only", normalized)
+                self.assertIn("without changing", normalized)
+                self.assertIsNone(forbidden.search(text), relative)
+                for stale_phrase in (
+                    "handles Git staging",
+                    "handles the Git commit",
+                    "commit identity",
+                    "commit quietly",
+                ):
+                    self.assertNotIn(stale_phrase.lower(), normalized)
+        handoff = (PACKAGE / "end_of_session.md").read_text(encoding="utf-8")
+        self.assertIn("unwritable `.git` directory is not a handoff failure", handoff)
+
     def test_backup_skips_missing_optional_user_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -637,175 +718,254 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             WorkflowConfig.from_mapping(raw)
 
-    def test_toml_patch_creates_owned_v1_agents_capacity_only(self) -> None:
+    def test_toml_patch_creates_owned_v2_capacity_without_agents_controls(self) -> None:
         rendered = patch_codex_config("", self.workflow_config())
-        self.assertIn(
-            "[agents] # codex-workflow-custom-owned: agents table", rendered
+        parsed = tomllib.loads(rendered)
+        self.assertTrue(parsed["features"]["multi_agent_v2"]["enabled"])
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
         )
+        self.assertNotIn("agents", parsed)
+        self.assertNotIn("agents.enabled", rendered)
+        self.assertNotIn("agents.max_threads", rendered)
         self.assertIn(
-            "max_threads = 20 "
-            "# codex-workflow-custom-owned: agents.max_threads",
+            "[features.multi_agent_v2] "
+            "# codex-workflow-custom-owned: V2 feature table",
             rendered,
         )
-        self.assertNotIn("multi_agent_v2", rendered)
-        self.assertNotIn("enabled", rendered)
+        self.assertEqual(remove_workflow_owned_config(rendered), "")
 
-    def test_toml_patch_existing_agents_preserves_content_and_comments(self) -> None:
+    def test_toml_patch_nondefault_child_limit_adds_parent_slot(self) -> None:
+        rendered = patch_codex_config("", self.workflow_config(12))
+        parsed = tomllib.loads(rendered)
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            13,
+        )
+        self.assertNotIn("max_threads", parsed.get("agents", {}))
+
+    def test_toml_patch_fails_closed_on_multiline_basic_string_features_text(self) -> None:
+        original = 'note = """\n[features]\nnot a real table\n"""\n'
+        with self.assertRaisesRegex(ValidationError, "ambiguous \\[features]"):
+            patch_codex_config(original, self.workflow_config())
+
+    def test_toml_patch_fails_closed_on_multiline_literal_string_agents_text(self) -> None:
+        original = "note = '''\n[agents]\nnot a real table\n'''\n"
+        with self.assertRaisesRegex(ValidationError, "ambiguous \\[agents]"):
+            patch_codex_config(original, self.workflow_config())
+
+    def test_toml_patch_real_feature_and_agent_tables_round_trip(self) -> None:
+        original = (
+            "[features]\n"
+            "unrelated_feature = true\n\n"
+            "[agents]\n"
+            "interrupt_message = true\n"
+        )
+        rendered = patch_codex_config(original, self.workflow_config())
+        parsed = tomllib.loads(rendered)
+        self.assertTrue(parsed["features"]["unrelated_feature"])
+        self.assertTrue(parsed["features"]["multi_agent_v2"]["enabled"])
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
+        )
+        self.assertTrue(parsed["agents"]["interrupt_message"])
+        self.assertNotIn("max_threads", parsed["agents"])
+        self.assertEqual(remove_workflow_owned_config(rendered), original)
+
+    def test_toml_patch_migrates_owned_legacy_v1_capacity_and_v2_boolean(self) -> None:
         original = (
             'model = "custom"\n\n'
-            "[agents] # user table\n"
-            "# Keep this comment.\n"
-            'default_subagent_model = "synthetic/deep-model"\n'
-        )
-        rendered = patch_codex_config(original, self.workflow_config())
-        self.assertIn(original, rendered)
-        self.assertIn("max_threads = 20", rendered)
-        self.assertNotIn("agents table", rendered)
-
-    def test_toml_patch_subtable_only_adds_owned_parent_and_round_trips(self) -> None:
-        original = (
-            "[agents.reviewer]\n"
-            '# Reviewer content remains unchanged.\n'
-            'description = "Reviewer"\n'
-            'config_file = "reviewer.toml"\n'
-        )
-        rendered = patch_codex_config(original, self.workflow_config())
-        self.assertTrue(rendered.startswith(original))
-        self.assertIn(
-            "[agents] # codex-workflow-custom-owned: agents table", rendered
-        )
-        self.assertEqual(tomllib.loads(rendered)["agents"]["max_threads"], 20)
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
-
-    def test_toml_patch_multiple_agent_subtables_round_trip(self) -> None:
-        original = (
-            "[agents.reviewer]\n"
-            'description = "Reviewer"\n\n'
-            "[agents.tester]\n"
-            'description = "Tester"\n'
+            "[features] # codex-workflow-custom-owned: features table\n"
+            "multi_agent_v2 = true "
+            "# codex-workflow-custom-owned: features.multi_agent_v2\n"
+            "keep_feature = true\n\n"
+            "[agents] # codex-workflow-custom-owned: agents table\n"
+            "max_threads = 20 "
+            "# codex-workflow-custom-owned: agents.max_threads\n"
+            "keep_agent = true\n"
         )
         rendered = patch_codex_config(original, self.workflow_config())
         parsed = tomllib.loads(rendered)
-        self.assertEqual(parsed["agents"]["max_threads"], 20)
-        self.assertEqual(parsed["agents"]["reviewer"]["description"], "Reviewer")
-        self.assertEqual(parsed["agents"]["tester"]["description"], "Tester")
-        self.assertTrue(rendered.startswith(original))
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
+        self.assertTrue(parsed["features"]["keep_feature"])
+        self.assertTrue(parsed["agents"]["keep_agent"])
+        self.assertNotIn("max_threads", parsed["agents"])
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
+        )
+        self.assertNotIn("codex-workflow-custom-owned: agents", rendered)
+        self.assertNotIn("codex-workflow-custom-owned: features table", rendered)
+        self.assertEqual(
+            remove_workflow_owned_config(rendered),
+            'model = "custom"\n\n'
+            "[features]\n"
+            "keep_feature = true\n\n"
+            "[agents]\n"
+            "keep_agent = true\n",
+        )
 
-    def test_toml_patch_matching_dotted_capacity_is_preserved(self) -> None:
-        original = "agents.max_threads = 20 # user capacity\n"
+    def test_toml_patch_migrates_empty_owned_legacy_tables(self) -> None:
+        original = (
+            'model = "custom"\n'
+            "[features] # codex-workflow-custom-owned: features table\n"
+            "multi_agent_v2 = true "
+            "# codex-workflow-custom-owned: features.multi_agent_v2\n"
+            "[agents] # codex-workflow-custom-owned: agents table\n"
+            "max_threads = 20 "
+            "# codex-workflow-custom-owned: agents.max_threads\n"
+        )
         rendered = patch_codex_config(original, self.workflow_config())
-        self.assertEqual(rendered, original)
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
-        self.assertNotIn("codex-workflow-custom-owned", rendered)
+        parsed = tomllib.loads(rendered)
+        self.assertNotIn("agents", parsed)
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
+        )
+        self.assertEqual(remove_workflow_owned_config(rendered), 'model = "custom"\n')
 
-    def test_toml_patch_conflicting_dotted_capacity_fails_closed(self) -> None:
-        original = "agents.max_threads = 7 # user capacity\n"
-        with self.assertRaisesRegex(ValidationError, "already set to 7"):
-            patch_codex_config(original, self.workflow_config())
-        self.assertEqual(original, "agents.max_threads = 7 # user capacity\n")
+    def test_toml_patch_rejects_any_unowned_legacy_v1_capacity(self) -> None:
+        originals = (
+            "[agents]\nmax_threads = 20 # user capacity\n",
+            "[agents]\nmax_threads = 7 # user capacity\n",
+            "agents.max_threads = 20 # user capacity\n",
+            "agents.max_threads = 7 # user capacity\n",
+            "agents = { max_threads = 20 } # user capacity\n",
+            "agents = { max_threads = 7 } # user capacity\n",
+        )
+        for original in originals:
+            with self.subTest(original=original):
+                with self.assertRaisesRegex(ValidationError, "legacy V1 capacity field"):
+                    patch_codex_config(original, self.workflow_config())
 
-    def test_toml_patch_dotted_agents_setting_adds_owned_dotted_capacity(self) -> None:
-        original = 'agents.default_subagent_model = "synthetic-model"\n'
+    def test_toml_patch_preserves_agents_content_without_managing_enabled(self) -> None:
+        originals = (
+            "[agents]\ninterrupt_message = true\n",
+            "agents.interrupt_message = true\n",
+            "agents = { interrupt_message = true }\n",
+            '[agents.reviewer]\ndescription = "Reviewer"\n',
+        )
+        for original in originals:
+            with self.subTest(original=original):
+                rendered = patch_codex_config(original, self.workflow_config())
+                parsed = tomllib.loads(rendered)
+                self.assertNotIn("max_threads", parsed["agents"])
+                self.assertNotIn("enabled", parsed["agents"])
+                self.assertEqual(remove_workflow_owned_config(rendered), original)
+
+    def test_toml_patch_adds_owned_capacity_to_user_v2_table(self) -> None:
+        original = (
+            "[features.multi_agent_v2]\n"
+            "enabled = true # user enablement\n"
+            'keep = "user"\n'
+        )
         rendered = patch_codex_config(original, self.workflow_config())
-        self.assertTrue(rendered.startswith(original))
+        parsed = tomllib.loads(rendered)
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
+        )
         self.assertIn(
-            "agents.max_threads = 20 "
-            "# codex-workflow-custom-owned: agents.max_threads",
+            "# codex-workflow-custom-owned: V2 "
+            "max_concurrent_threads_per_session",
             rendered,
         )
-        self.assertEqual(tomllib.loads(rendered)["agents"]["max_threads"], 20)
-        self.assertEqual(patch_codex_config(rendered, self.workflow_config()), rendered)
-        updated = patch_codex_config(rendered, self.workflow_config(12))
-        self.assertEqual(tomllib.loads(updated)["agents"]["max_threads"], 12)
-        self.assertEqual(remove_workflow_owned_config(updated), original)
+        self.assertNotIn("enabled = true # codex-workflow-custom-owned", rendered)
+        self.assertEqual(remove_workflow_owned_config(rendered), original)
 
-    def test_toml_patch_dotted_agents_stops_before_array_table(self) -> None:
-        original = (
-            'agents.default_subagent_model = "synthetic-model"\n\n'
-            "[[something]]\n"
-            'name = "item"\n'
+    def test_toml_patch_preserves_fully_satisfied_unowned_v2_forms(self) -> None:
+        originals = (
+            "[features.multi_agent_v2]\n"
+            "enabled = true\n"
+            "max_concurrent_threads_per_session = 21\n",
+            "features.multi_agent_v2 = { enabled = true, "
+            "max_concurrent_threads_per_session = 21 }\n",
+            "features = { multi_agent_v2 = { enabled = true, "
+            "max_concurrent_threads_per_session = 21 }, unrelated = true }\n",
         )
-        rendered = patch_codex_config(original, self.workflow_config())
-        owned = (
-            "agents.max_threads = 20 "
-            "# codex-workflow-custom-owned: agents.max_threads"
+        for original in originals:
+            with self.subTest(original=original):
+                rendered = patch_codex_config(original, self.workflow_config())
+                self.assertEqual(rendered, original)
+                self.assertNotIn("codex-workflow-custom-owned", rendered)
+                self.assertEqual(remove_workflow_owned_config(rendered), original)
+
+    def test_toml_patch_rejects_conflicting_unowned_v2_capacity(self) -> None:
+        originals = (
+            "[features.multi_agent_v2]\n"
+            "enabled = true\n"
+            "max_concurrent_threads_per_session = 20\n",
+            "features.multi_agent_v2 = { enabled = true, "
+            "max_concurrent_threads_per_session = 7 }\n",
         )
-        self.assertLess(rendered.index(owned), rendered.index("[[something]]"))
-        parsed = tomllib.loads(rendered)
-        self.assertEqual(parsed["agents"]["max_threads"], 20)
-        self.assertEqual(parsed["something"], [{"name": "item"}])
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
+        for original in originals:
+            with self.subTest(original=original):
+                with self.assertRaisesRegex(
+                    ValidationError, "max_concurrent_threads_per_session.*already set"
+                ):
+                    patch_codex_config(original, self.workflow_config())
 
-    def test_toml_patch_matching_inline_capacity_is_preserved(self) -> None:
-        original = "agents = { max_threads = 20 } # user capacity\n"
-        rendered = patch_codex_config(original, self.workflow_config())
-        self.assertEqual(rendered, original)
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
-
-    def test_toml_patch_conflicting_inline_capacity_fails_closed(self) -> None:
-        original = "agents = { max_threads = 7 } # user capacity\n"
-        with self.assertRaisesRegex(ValidationError, "already set to 7"):
-            patch_codex_config(original, self.workflow_config())
-
-    def test_toml_patch_inline_agents_without_capacity_fails_closed(self) -> None:
-        original = 'agents = { default_subagent_model = "synthetic-model" }\n'
-        with self.assertRaisesRegex(ValidationError, "inline table without max_threads"):
-            patch_codex_config(original, self.workflow_config())
-
-    def test_toml_patch_matching_unowned_capacity_is_preserved(self) -> None:
-        original = "[agents]\nmax_threads = 20 # user capacity\n"
-        rendered = patch_codex_config(original, self.workflow_config())
-        self.assertEqual(rendered, original)
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
-        self.assertNotIn("codex-workflow-custom-owned", rendered)
-
-    def test_toml_patch_explicit_agents_stops_before_array_table(self) -> None:
-        original = (
-            "[agents]\n"
-            'default_subagent_model = "synthetic-model"\n\n'
-            "[[something]]\n"
-            'name = "item"\n'
+    def test_toml_patch_rejects_capacityless_scalar_and_inline_v2(self) -> None:
+        originals = (
+            "[features]\nmulti_agent_v2 = true\n",
+            "features.multi_agent_v2 = true\n",
+            "features = { multi_agent_v2 = true }\n",
+            "features.multi_agent_v2 = { enabled = true }\n",
         )
-        rendered = patch_codex_config(original, self.workflow_config())
-        owned = (
-            "max_threads = 20 "
-            "# codex-workflow-custom-owned: agents.max_threads"
+        for original in originals:
+            with self.subTest(original=original):
+                with self.assertRaisesRegex(ValidationError, "no V2 session capacity"):
+                    patch_codex_config(original, self.workflow_config())
+
+    def test_toml_patch_rejects_unowned_v2_false_without_mutation(self) -> None:
+        originals = (
+            "[features]\nmulti_agent_v2 = false\n",
+            "[features.multi_agent_v2]\nenabled = false\nkeep = 7\n",
+            "features.multi_agent_v2 = { enabled = false, "
+            "max_concurrent_threads_per_session = 21 }\n",
+            "features = { multi_agent_v2 = false }\n",
         )
-        self.assertLess(rendered.index(owned), rendered.index("[[something]]"))
-        parsed = tomllib.loads(rendered)
-        self.assertEqual(parsed["agents"]["max_threads"], 20)
-        self.assertEqual(parsed["something"], [{"name": "item"}])
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
+        for original in originals:
+            with self.subTest(original=original):
+                with self.assertRaisesRegex(ValidationError, "explicitly disabled"):
+                    patch_codex_config(original, self.workflow_config())
 
-    def test_toml_patch_conflicting_unowned_capacity_fails_closed(self) -> None:
-        original = "[agents]\nmax_threads = 7 # user capacity\n"
-        with self.assertRaisesRegex(ValidationError, "already set to 7"):
-            patch_codex_config(original, self.workflow_config())
-        self.assertEqual(original, "[agents]\nmax_threads = 7 # user capacity\n")
-
-    def test_toml_patch_updates_and_removes_owned_capacity(self) -> None:
-        original = patch_codex_config("[agents]\nkeep = true\n", self.workflow_config())
-        rendered = patch_codex_config(original, self.workflow_config(12))
-        self.assertIn("max_threads = 12", rendered)
-        removed = remove_workflow_owned_config(rendered)
-        self.assertEqual(removed, "[agents]\nkeep = true\n")
-
-    def test_toml_remove_cleans_workflow_created_agents_table(self) -> None:
-        original = 'model = "custom"\n'
-        rendered = patch_codex_config(original, self.workflow_config())
-        self.assertEqual(remove_workflow_owned_config(rendered), original)
-
-    def test_toml_remove_preserves_foreign_content_added_to_created_table(self) -> None:
+    def test_toml_patch_updates_owned_v2_capacity_without_duplicate(self) -> None:
         rendered = patch_codex_config("", self.workflow_config())
-        rendered += 'default_subagent_model = "synthetic/deep-model"\n'
+        updated = patch_codex_config(rendered, self.workflow_config(12))
+        parsed = tomllib.loads(updated)
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            13,
+        )
+        self.assertEqual(updated.count("max_concurrent_threads_per_session ="), 1)
+        self.assertNotIn("agents.max_threads", updated)
+        self.assertEqual(remove_workflow_owned_config(updated), "")
+
+    def test_toml_remove_preserves_foreign_content_added_to_created_v2_table(self) -> None:
+        rendered = patch_codex_config("", self.workflow_config())
+        rendered += 'keep_feature = "foreign"\n'
         removed = remove_workflow_owned_config(rendered)
         self.assertEqual(
             removed,
-            '[agents]\ndefault_subagent_model = "synthetic/deep-model"\n',
+            "[features.multi_agent_v2]\n"
+            'keep_feature = "foreign"\n',
         )
 
-    def test_opencodex_shaped_config_survives_patch_and_remove(self) -> None:
+    def test_toml_remove_supports_exact_legacy_owned_markers(self) -> None:
+        original = (
+            'model = "custom"\n'
+            "[features] # codex-workflow-custom-owned: features table\n"
+            "multi_agent_v2 = true "
+            "# codex-workflow-custom-owned: features.multi_agent_v2\n"
+            "[agents] # codex-workflow-custom-owned: agents table\n"
+            "max_threads = 20 "
+            "# codex-workflow-custom-owned: agents.max_threads\n"
+        )
+        self.assertEqual(remove_workflow_owned_config(original), 'model = "custom"\n')
+
+    def test_opencodex_shaped_v2_compatible_config_survives_round_trip(self) -> None:
         original = (
             'openai_base_url = "http://127.0.0.1:8765/v1"\n'
             'model = "synthetic/deep-model"\n'
@@ -813,49 +973,80 @@ class ConfigTests(unittest.TestCase):
             "[features]\n"
             "unrelated_feature = true\n\n"
             "[agents]\n"
-            "# Synthetic OpenCodex defaults.\n"
-            'default_subagent_model = "synthetic/deep-subagent"\n'
-            'default_subagent_reasoning_effort = "max"\n'
-            'provider_note = "preserve"\n'
+            "interrupt_message = true\n"
+            "job_max_runtime_seconds = 900\n"
         )
         rendered = patch_codex_config(original, self.workflow_config())
-        self.assertIn(original, rendered)
+        parsed = tomllib.loads(rendered)
+        self.assertEqual(parsed["openai_base_url"], "http://127.0.0.1:8765/v1")
+        self.assertTrue(parsed["features"]["unrelated_feature"])
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
+        )
+        self.assertEqual(parsed["agents"]["job_max_runtime_seconds"], 900)
+        self.assertNotIn("max_threads", parsed["agents"])
         self.assertEqual(remove_workflow_owned_config(rendered), original)
 
-    def test_toml_patch_rejects_explicit_v2_enabled_without_mutation(self) -> None:
-        enabled_forms = (
-            "[features]\nmulti_agent_v2 = true\n",
-            "[features.multi_agent_v2]\nenabled = true\n",
-            "features.multi_agent_v2 = { enabled = true }\n",
+    def test_toml_patch_dotted_features_round_trip(self) -> None:
+        original = "features.unrelated = true\n"
+        rendered = patch_codex_config(original, self.workflow_config())
+        parsed = tomllib.loads(rendered)
+        self.assertTrue(parsed["features"]["unrelated"])
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
         )
-        for original in enabled_forms:
-            with self.subTest(original=original):
-                with self.assertRaisesRegex(ValidationError, "explicitly enabled"):
-                    patch_codex_config(original, self.workflow_config())
+        self.assertEqual(remove_workflow_owned_config(rendered), original)
 
-    def test_toml_patch_preserves_explicitly_disabled_v2_forms(self) -> None:
-        disabled_forms = (
-            "[features]\nmulti_agent_v2 = false\n",
-            "[features.multi_agent_v2]\nenabled = false\nkeep = 7\n",
-            "features.multi_agent_v2 = { enabled = false, keep = 7 }\n",
+    def test_toml_patch_feature_subtable_round_trip(self) -> None:
+        original = "[features.other]\nkeep = true\n"
+        rendered = patch_codex_config(original, self.workflow_config())
+        parsed = tomllib.loads(rendered)
+        self.assertTrue(parsed["features"]["other"]["keep"])
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"],
+            21,
         )
-        for original in disabled_forms:
-            with self.subTest(original=original):
-                rendered = patch_codex_config(original, self.workflow_config())
-                self.assertTrue(rendered.startswith(original))
-                self.assertEqual(remove_workflow_owned_config(rendered), original)
+        self.assertEqual(remove_workflow_owned_config(rendered), original)
 
-    def test_toml_patch_rejects_ambiguous_relevant_definitions_and_markers(self) -> None:
+    def test_toml_patch_inline_features_without_v2_fails_closed(self) -> None:
+        original = "features = { unrelated = true }\n"
+        with self.assertRaisesRegex(
+            ValidationError, "inline table without multi_agent_v2"
+        ):
+            patch_codex_config(original, self.workflow_config())
+
+    def test_toml_patch_rejects_ownership_marker_drift(self) -> None:
         invalid_inputs = (
-            "[agents]\nmax_threads = 20\nmax_threads = 20\n",
-            "[agents]\nmax_threads = \"20\"\n",
-            "[agents]\n# codex-workflow-custom-owned: agents.max_threads\n",
-            "[features.multi_agent_v2]\nenabled = \"true\"\n",
+            "[agents] # codex-workflow-custom-owned: agents table\n"
+            "max_threads = 20\n",
+            "[features] # codex-workflow-custom-owned: features table\n"
+            "multi_agent_v2 = true\n",
+            "[features.multi_agent_v2] "
+            "# codex-workflow-custom-owned: V2 feature table\n"
+            "enabled = true "
+            "# codex-workflow-custom-owned: features.multi_agent_v2\n",
+            "[features.multi_agent_v2]\n"
+            "enabled = true\n"
+            "# codex-workflow-custom-owned: V2 "
+            "max_concurrent_threads_per_session\n",
         )
         for original in invalid_inputs:
             with self.subTest(original=original):
                 with self.assertRaises(ValidationError):
                     patch_codex_config(original, self.workflow_config())
+
+    def test_toml_remove_rejects_malformed_v2_ownership_marker(self) -> None:
+        rendered = patch_codex_config("", self.workflow_config())
+        malformed = rendered.replace(
+            "# codex-workflow-custom-owned: V2 "
+            "max_concurrent_threads_per_session",
+            "# codex-workflow-custom-owned: V2 "
+            "max_concurrent_threads_per_session extra",
+        )
+        with self.assertRaisesRegex(ValidationError, "capacity ownership marker"):
+            remove_workflow_owned_config(malformed)
 
     def test_toml_patch_is_idempotent(self) -> None:
         once = patch_codex_config("[agents]\nkeep = true\n", self.workflow_config())
@@ -870,11 +1061,10 @@ class ConfigTests(unittest.TestCase):
             "keep_agent = true\n\n"
             "[features.multi_agent_v2]\n"
             "enabled = true\n"
-            "max_concurrent_threads_per_session = 20\n"
+            "max_concurrent_threads_per_session = 21\n"
             'keep_feature = "keep"\n'
         )
-        rendered = remove_workflow_owned_config(original)
-        self.assertEqual(rendered, original)
+        self.assertEqual(remove_workflow_owned_config(original), original)
 
     def test_heavy_snapshot_is_rendered_from_config(self) -> None:
         config = WorkflowConfig.from_mapping(
@@ -894,6 +1084,154 @@ class ConfigTests(unittest.TestCase):
             'fork_turns="200"',
             (PACKAGE / "end_of_session.md").read_text(encoding="utf-8"),
         )
+
+
+class CodexHomeInstructionContractTests(unittest.TestCase):
+    """CODEX_HOME-aware workflow-resource lookup for managed instructions."""
+
+    MANAGED_INSTRUCTION_FILES = (
+        "AGENTS.md",
+        "user_AGENTS.md",
+        "heavy_route.md",
+        "medium_route.md",
+        "install.md",
+        "update.md",
+        "check_update.md",
+        "remove.md",
+        "enable.md",
+        "disable.md",
+        "enable_auto_check_update.md",
+        "disable_auto_check_update.md",
+        "enable_auto_update.md",
+        "disable_auto_update.md",
+        "configuration_guide.md",
+        "personalization_guide.md",
+        "resources/auto_check_update.md",
+    )
+
+    RULE_CARRYING_FILES = tuple(
+        name
+        for name in MANAGED_INSTRUCTION_FILES
+        if name not in {"heavy_route.md", "medium_route.md"}
+    )
+
+    @classmethod
+    def instruction_text(cls, name: str) -> str:
+        return (PACKAGE / name).read_text(encoding="utf-8")
+
+    def test_default_home_contract_keeps_codex_fallback(self) -> None:
+        for name in self.RULE_CARRYING_FILES:
+            with self.subTest(name=name):
+                self.assertIn(
+                    "otherwise use `~/.codex`",
+                    " ".join(self.instruction_text(name).split()),
+                )
+
+    def test_custom_codex_home_contract_requires_precedence(self) -> None:
+        for name in self.RULE_CARRYING_FILES:
+            with self.subTest(name=name):
+                self.assertIn(
+                    "non-empty `CODEX_HOME` environment variable",
+                    " ".join(self.instruction_text(name).split()),
+                )
+
+    def test_managed_instructions_never_bind_lookup_to_default_home(self) -> None:
+        for name in self.MANAGED_INSTRUCTION_FILES:
+            with self.subTest(name=name):
+                self.assertNotIn(
+                    "~/.codex/codex_workflow/", self.instruction_text(name)
+                )
+
+    def test_route_lookups_use_resolved_runtime_directory(self) -> None:
+        agents = self.instruction_text("AGENTS.md")
+        self.assertNotIn("~/.codex/codex_workflow/heavy_route.md", agents)
+        self.assertNotIn("~/.codex/codex_workflow/medium_route.md", agents)
+        self.assertIn("<Codex home>/codex_workflow/heavy_route.md", agents)
+        self.assertIn("<Codex home>/codex_workflow/medium_route.md", agents)
+
+    def test_explorer_and_end_of_session_lookups_use_resolved_runtime(self) -> None:
+        agents = self.instruction_text("AGENTS.md")
+        self.assertIn("<Codex home>/codex_workflow/explorer_companion.md", agents)
+        self.assertIn("<Codex home>/codex_workflow/end_of_session.md", agents)
+        for route in ("heavy_route.md", "medium_route.md"):
+            with self.subTest(route=route):
+                text = self.instruction_text(route)
+                self.assertNotIn(
+                    "~/.codex/codex_workflow/end_of_session.md", text
+                )
+                self.assertIn(
+                    "<Codex home>/codex_workflow/end_of_session.md", text
+                )
+
+    def test_user_command_guides_use_resolved_runtime_directory(self) -> None:
+        user_agents = self.instruction_text("user_AGENTS.md")
+        self.assertNotIn("~/.codex/codex_workflow/", user_agents)
+        for guide in (
+            "install.md",
+            "update.md",
+            "check_update.md",
+            "remove.md",
+            "enable_auto_check_update.md",
+            "disable_auto_check_update.md",
+            "enable_auto_update.md",
+            "disable_auto_update.md",
+            "configuration_guide.md",
+            "personalization_guide.md",
+            "disable.md",
+            "enable.md",
+        ):
+            with self.subTest(guide=guide):
+                self.assertIn(
+                    f"<Codex home>/codex_workflow/{guide}", user_agents
+                )
+
+    def test_cli_home_resolution_respects_codex_home_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            custom = Path(temporary) / "custom-codex-home"
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(custom)}):
+                self.assertEqual(workflow_cli._default_codex_home(), custom)
+            with mock.patch.dict(os.environ, {"CODEX_HOME": ""}):
+                self.assertEqual(
+                    workflow_cli._default_codex_home(), Path.home() / ".codex"
+                )
+        with mock.patch.dict(os.environ):
+            os.environ.pop("CODEX_HOME", None)
+            self.assertEqual(
+                workflow_cli._default_codex_home(), Path.home() / ".codex"
+            )
+
+    def test_custom_codex_home_materializes_resources_and_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            codex_home = root / "isolated-codex-home"
+            project_root = root / "project"
+            project_root.mkdir()
+            runtime = RuntimePaths(codex_home)
+            project = ProjectPaths(project_root)
+            package = PackageLayout.resolve(PACKAGE)
+            plan_bootstrap(package, runtime, project).apply()
+            self.assertTrue((runtime.runtime / "workflow.py").is_file())
+            self.assertTrue((runtime.runtime / "heavy_route.md").is_file())
+            self.assertTrue((runtime.agents / "executor_luna.toml").is_file())
+            self.assertTrue(runtime.config_toml.is_file())
+            self.assertTrue(runtime.user_agents.is_file())
+            for relative in (
+                "templates/AGENTS.md",
+                "user_AGENTS.md",
+                "heavy_route.md",
+                "medium_route.md",
+            ):
+                with self.subTest(relative=relative):
+                    text = (runtime.runtime / relative).read_text(
+                        encoding="utf-8"
+                    )
+                    self.assertNotIn("~/.codex/codex_workflow/", text)
+            installed = runtime.user_agents.read_text(encoding="utf-8")
+            self.assertNotIn("~/.codex/codex_workflow/", installed)
+            self.assertIn("otherwise use `~/.codex`", installed)
+            entry = project.active.read_text(encoding="utf-8")
+            self.assertIn("<Codex home>/codex_workflow/heavy_route.md", entry)
+            self.assertIn("otherwise use `~/.codex`", entry)
 
 
 class ReleaseTests(unittest.TestCase):
@@ -1052,14 +1390,34 @@ class LifecycleIntegrationTests(unittest.TestCase):
         self.assertTrue((self.runtime.agents / "executor_luna.toml").is_file())
         self.assertTrue((self.runtime.agents / "executor_terra.toml").is_file())
         self.assertTrue((self.runtime.agents / "end_of_session.toml").is_file())
-        self.assertIn(
-            "max_threads = 20 # codex-workflow-custom-owned: agents.max_threads",
-            self.runtime.config_toml.read_text(encoding="utf-8"),
+        materialized_heavy = (self.runtime.runtime / "heavy_route.md").read_text(
+            encoding="utf-8"
         )
-        self.assertNotIn(
-            "multi_agent_v2",
-            self.runtime.config_toml.read_text(encoding="utf-8"),
+        self.assertIn("agent_type", materialized_heavy)
+        self.assertIn("task name alone is invalid role binding", materialized_heavy)
+        materialized_handoff = (
+            self.runtime.runtime / "end_of_session.md"
+        ).read_text(encoding="utf-8")
+        materialized_handoff_worker = (
+            self.runtime.agents / "end_of_session.toml"
+        ).read_text(encoding="utf-8")
+        for text in (materialized_handoff, materialized_handoff_worker):
+            self.assertIn("read-only", text.lower())
+            self.assertNotRegex(
+                text,
+                r"\bgit\s+(?:add|commit|push|reset|stash|checkout|clean)\b",
+            )
+        materialized = self.runtime.config_toml.read_text(encoding="utf-8")
+        parsed_config = tomllib.loads(materialized)
+        self.assertTrue(parsed_config["features"]["multi_agent_v2"]["enabled"])
+        self.assertEqual(
+            parsed_config["features"]["multi_agent_v2"][
+                "max_concurrent_threads_per_session"
+            ],
+            21,
         )
+        self.assertNotIn("max_threads", parsed_config.get("agents", {}))
+        self.assertNotIn("enabled", parsed_config.get("agents", {}))
         installed_user_agents = self.runtime.user_agents.read_text(encoding="utf-8")
         self.assertNotIn("auto-check-update --json", installed_user_agents)
         self.assertNotIn(AUTO_CHECK_UPDATE_PLACEHOLDER, installed_user_agents)
@@ -1422,15 +1780,22 @@ class LifecycleIntegrationTests(unittest.TestCase):
         )
         config = self.runtime.config_toml.read_text(encoding="utf-8")
         config = config.replace(
-            "max_threads = 20 # codex-workflow-custom-owned: agents.max_threads",
-            "max_threads = 20 # codex-workflow-custom-owned: agents.max_threads\n"
+            "max_concurrent_threads_per_session = 21 "
+            "# codex-workflow-custom-owned: V2 "
+            "max_concurrent_threads_per_session",
+            "max_concurrent_threads_per_session = 21 "
+            "# codex-workflow-custom-owned: V2 "
+            "max_concurrent_threads_per_session\n"
+            'keep_feature = "keep"',
+        )
+        config += (
+            "[agents]\n"
             "keep_agent = true\n"
-            'default_subagent_model = "synthetic/deep-model"',
+            "interrupt_message = true\n"
         )
         self.runtime.config_toml.write_text(
             'openai_base_url = "http://127.0.0.1:8765/v1"\n'
             'model_catalog_json = "C:/synthetic/catalog.json"\n'
-            '[features]\nkeep_feature = "keep"\n\n'
             + config,
             encoding="utf-8",
         )
@@ -1478,7 +1843,7 @@ class LifecycleIntegrationTests(unittest.TestCase):
         self.assertIn('model_catalog_json = "C:/synthetic/catalog.json"', remaining_config)
         self.assertIn("keep_agent = true", remaining_config)
         self.assertIn('keep_feature = "keep"', remaining_config)
-        self.assertIn('default_subagent_model = "synthetic/deep-model"', remaining_config)
+        self.assertIn("interrupt_message = true", remaining_config)
         self.assertNotIn("max_threads", remaining_config)
         self.assertNotIn("codex-workflow-custom-owned", remaining_config)
 
@@ -1489,17 +1854,26 @@ class LifecycleIntegrationTests(unittest.TestCase):
             "[features]\n"
             "unrelated_feature = true\n\n"
             "[agents]\n"
-            "# Synthetic OpenCodex defaults.\n"
-            'default_subagent_model = "synthetic/deep-subagent"\n'
-            'default_subagent_reasoning_effort = "max"\n'
+            "# Synthetic V2-compatible OpenCodex content.\n"
+            "interrupt_message = true\n"
+            "job_max_runtime_seconds = 900\n"
         )
         self.codex_home.mkdir()
         self.runtime.config_toml.write_text(original, encoding="utf-8")
         plan_bootstrap(self.package, self.runtime, self.project).apply()
         configured = self.runtime.config_toml.read_text(encoding="utf-8")
-        self.assertIn(original, configured)
-        self.assertIn("max_threads = 20", configured)
-        self.assertNotIn("multi_agent_v2", configured)
+        parsed = tomllib.loads(configured)
+        self.assertEqual(parsed["openai_base_url"], "http://127.0.0.1:8765/v1")
+        self.assertTrue(parsed["features"]["unrelated_feature"])
+        self.assertEqual(
+            parsed["features"]["multi_agent_v2"][
+                "max_concurrent_threads_per_session"
+            ],
+            21,
+        )
+        self.assertTrue(parsed["agents"]["interrupt_message"])
+        self.assertEqual(parsed["agents"]["job_max_runtime_seconds"], 900)
+        self.assertNotIn("max_threads", parsed["agents"])
         plan_remove(self.runtime, self.project).apply()
         self.assertEqual(self.runtime.config_toml.read_text(encoding="utf-8"), original)
 

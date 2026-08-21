@@ -6,7 +6,9 @@ state, generated outputs, and project-owned content.
 ## Data ownership
 
 - `codex_workflow/resources/`: immutable defaults distributed by a release.
-- `~/.codex/codex_workflow/workflow_config.json`: mutable installed state.
+- `<Codex home>/codex_workflow/workflow_config.json`: mutable installed state,
+  where `<Codex home>` is the non-empty `CODEX_HOME` environment variable when
+  set, otherwise `~/.codex`.
 - Heavy snapshots, the End-of-Session fork value, all worker TOMLs, and
   workflow-owned Codex settings: generated outputs; never sources of truth.
 - Project personalization: structured project state materialized into its own

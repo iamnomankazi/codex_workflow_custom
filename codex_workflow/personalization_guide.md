@@ -8,15 +8,18 @@ The persistent resource is:
 
     .codex_workflow_hidden_resources/personalization.md
 
-The lifecycle CLI applies a validated resource directly and requires Python
-3.11 or newer:
+The lifecycle CLI is:
 
-    ~/.codex/codex_workflow/workflow.py
+    <Codex home>/codex_workflow/workflow.py
+
+Resolve `<Codex home>` from a non-empty `CODEX_HOME` environment variable
+when it is set; otherwise use `~/.codex`. It applies a validated resource
+directly and requires Python 3.11 or newer.
 
 ## Questions
 
 First read and validate the installed default resource at
-`~/.codex/codex_workflow/resources/personalization.md`. Then read the current
+`<Codex home>/codex_workflow/resources/personalization.md`. Then read the current
 project resource. If the project resource is missing or invalid, tell the user
 that it needs recovery and use the installed default as the proposed starting
 state; do not attempt to preserve malformed text.
@@ -42,7 +45,7 @@ Write the complete proposed resource, including exactly the three required
 headings and their `Status:` and `Decision:` fields, to a temporary file. Run:
 
 ```text
-python3 ~/.codex/codex_workflow/workflow.py personalize \
+python3 <Codex home>/codex_workflow/workflow.py personalize \
   --project <project> --resource <candidate> --json
 ```
 

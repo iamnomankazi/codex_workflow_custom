@@ -1,9 +1,11 @@
 # Disable the Project Workflow
 
-Run the installed lifecycle CLI from the project directory:
+Run the installed lifecycle CLI from the project directory, resolving the
+Codex home from a non-empty `CODEX_HOME` environment variable when it is set;
+otherwise use `~/.codex`:
 
 ```text
-python3 ~/.codex/codex_workflow/workflow.py disable --project <project> --json
+python3 <Codex home>/codex_workflow/workflow.py disable --project <project> --json
 ```
 
 It atomically moves the recognized `AGENTS.md` to the hidden entry point,

@@ -21,7 +21,7 @@ This guide is organized into five parts:
 Open Codex from the project directory and send this prompt:
 
 ```text
-Download and extract the latest `codex_workflow-<version>.zip` asset (not GitHub's Source code archive) from https://github.com/viettran-edgeAI/codex_workflow/releases. Verify it against `SHA256SUMS`, then read the bundled `codex_workflow/bootstrap.md` and follow it exactly.
+Download and extract the latest `codex_workflow-<version>.zip` asset (not GitHub's Source code archive) from https://github.com/iamnomankazi/codex_workflow_custom/releases. Verify it against `SHA256SUMS`, then read the bundled `codex_workflow/bootstrap.md` and follow it exactly.
 ```
 
 The release package is a universal ZIP for Linux, macOS, and Windows. Its
@@ -98,7 +98,7 @@ already been bootstrapped:
 - creates the default hidden personalization resource when missing;
 - reuses the installed user-level configuration as a read-only source.
 
-It does not reinstall or modify any user-level payload under `~/.codex/`, reset
+It does not reinstall or modify any user-level payload under `<Codex home>/`, reset
 existing project documents, or ask configuration and personalization
 questions. If the workflow already has an active or disabled project entry
 point, the command first validates its state. A healthy active installation is
@@ -144,7 +144,7 @@ non-affirmative response performs no changes.
 
 #### Automatic update check
 
-The package default is disabled: `~/.codex/AGENTS.md` contains no session-start
+The package default is disabled: `<Codex home>/AGENTS.md` contains no session-start
 check instruction, so new sessions make no automatic update-check call.
 
 Send `codex_workflow --enable_auto_check_update` to explicitly enable the
@@ -204,7 +204,7 @@ The selected route remains active until the user changes it or the session
 ends. Each substantive Medium or Heavy deployment automatically creates a fresh
 Luna xhigh worker before its final response. That worker receives the configured
 recent main-agent turns and alone reconciles the complete `agent_docs/`
-framework, handles Git closure, and returns the final three-column
+framework, reports Git state without mutating it, and returns the final three-column
 worker-statistics table. No manual closure prompt, main-agent summary, usage
 ledger, or second documentation worker is required. Questions and small or odd
 bounded tasks use the direct worker-free path and emit no table.
@@ -213,9 +213,11 @@ bounded tasks use the direct worker-free path and emit no table.
 
 The release ZIP contains only one top-level directory, `codex_workflow/`. It
 does not contain the repository README, README images, development documents,
-`.git/`, release scripts, or other repository-only files. On Windows, `~/.codex`
-means the current user's profile directory and the platform's normal path
-separator is used.
+`.git/`, release scripts, or other repository-only files. `~/.codex` below is
+the default Codex home only: a non-empty `CODEX_HOME` environment variable
+overrides it, and `~/.codex` is used only when `CODEX_HOME` is unset. On
+Windows, `~/.codex` means the current user's profile directory and the
+platform's normal path separator is used.
 
 After installation, the runtime is distributed between the user environment
 and the current project as follows:
@@ -310,15 +312,26 @@ materializes all generated surfaces from their source resources.
 The persistent configuration is:
 
 ```text
-~/.codex/codex_workflow/workflow_config.json
+<Codex home>/codex_workflow/workflow_config.json
 ```
 
 This mutable installed state is distinct from the immutable package default at
-`~/.codex/codex_workflow/resources/workflow_config.default.json`. Bootstrap
+`<Codex home>/codex_workflow/resources/workflow_config.default.json`. Bootstrap
 starts from the package default. Update migrates and preserves the mutable
 configuration, using the incoming package default only for newly introduced
 fields. The project entry point's enabled/disabled state is preserved
 separately.
+
+Multi-Agent V2 depends on the empirically tested OpenCodex `2.21.0` runtime.
+Its effective external configuration must already provide `multiAgentMode` =
+`"v2"`, `syncCodexSubagentDefaults` = `false`, and `agentTaskRecovery` with
+`enabled: true`, model `gpt-5.6-sol`, `timeoutMs` set to `45000`, and
+`cacheEntries` set to `200`. V2 mode is required for the intended V2 worker
+behavior; `syncCodexSubagentDefaults = false` avoids incompatible
+default-subagent writes; recovery is required because DeepSeek workers cannot
+directly consume encrypted V2 task content. The workflow validates this as an
+installation and update prerequisite in its operator instructions; it does not
+own, patch, or update OpenCodex configuration.
 
 The current default snapshot is:
 
@@ -354,7 +367,7 @@ The configuration contract is:
 5. keep `doc-writer` enabled because project installation depends on it and
    keep `end_of_session` enabled because both deployment routes require it;
 6. keep worker names unique and backed by templates in
-   `~/.codex/codex_workflow/templates/agents/`;
+   `<Codex home>/codex_workflow/templates/agents/`;
 7. keep exactly one of `executor_luna` and `executor_terra` enabled as the
    default executor;
 8. keep `max_executor_sol_instances` between zero and the concurrency limit.
@@ -364,18 +377,25 @@ synchronizes the Heavy snapshot, all worker TOMLs, and workflow-owned
 `config.toml` keys. End-of-Session handoff context is owned by the automatic
 handoff contract rather than persistent user configuration.
 
-The concurrency values must stay synchronized: the confirmed
-`max_concurrent_workers` in `workflow_config.json` is also written to
-`agents.max_threads` in `~/.codex/config.toml`. V2 is not enabled by the
-workflow. The value `20` is only the current package default; it must be
-replaced when the user selects another valid limit.
+The confirmed `max_concurrent_workers` remains a **child-worker** limit.
+Multi-Agent V2 counts the root Parent in total session capacity, so the workflow
+materializes
+`features.multi_agent_v2.max_concurrent_threads_per_session` as
+`max_concurrent_workers + 1`. The default 20 child workers therefore produce
+a V2 session capacity of 21. `agents.max_threads` is a legacy V1 capacity
+field and must not coexist with enabled V2: an exact workflow-owned legacy
+value is migrated/removed, while any unowned legacy value fails closed even
+when its number matches the configured child limit. Matching user-owned V2
+enablement and capacity remain unclaimed; conflicting values and unsafe TOML
+forms fail closed. Removal deletes only values carrying valid workflow
+ownership markers. The workflow does not add or manage `agents.enabled`.
 
 When worker definitions or platform settings change, open a new Codex session
 so the updated settings are loaded.
 
 ### Tuning an individual worker
 
-All distributed workers live in `~/.codex/agents/` and are generated from
+All distributed workers live in `<Codex home>/agents/` and are generated from
 templates. The `enabled_workers` configuration controls which materialized
 workers the workflow may create and use.
 Advanced changes belong in the owned template before reconfiguration. For
@@ -422,8 +442,8 @@ Advanced route changes belong in a maintained source package or fork, not in an
 installed generated copy that update will replace:
 
 ```text
-~/.codex/codex_workflow/heavy_route.md
-~/.codex/codex_workflow/medium_route.md
+<Codex home>/codex_workflow/heavy_route.md
+<Codex home>/codex_workflow/medium_route.md
 ```
 
 Possible customizations include:
@@ -463,7 +483,12 @@ The current enabled set is:
 | `tester` | Independent focused tests and failure analysis | Test/fixture scope; production defects return to the executor |
 | `doc-writer` | Assigned documentation during implementation and required installation initialization; not automatic deployment closure | Documentation scope; installation may authorize listed new or still-template-marked recovery files |
 | Explorer companion | Read-only context gateway for planning and knowledge-delta briefs | No |
-| `end_of_session` | Inherited-context reconciliation of the complete documentation framework plus Git closure and statistics | All `agent_docs/` and Git state during automatic closure |
+| `end_of_session` | Inherited-context reconciliation of the complete documentation framework plus read-only Git-state reporting and statistics | All `agent_docs/`; Git is inspection-only during automatic closure |
+
+Explorer and `reviewer_pro` remain workflow-level read-only roles. Current V2
+permission inheritance can make their hard sandbox less restrictive when the
+parent is writable; any write by either role is a worker-policy violation and
+must not be accepted as normal role behavior.
 
 `executor_terra.toml` is materialized alongside the other worker definitions;
 it becomes the selected default executor only when configured as such. The
@@ -592,7 +617,8 @@ main-agent takeover.
 
 Task workers must not edit Git state or the shared status documents. During
 automatic closure, `end_of_session` alone reconciles the complete documentation
-framework and Git state; it does not invoke another documentation worker.
+framework and reports Git state without changing it; it does not invoke another
+documentation worker.
 Explorer remains read-only.
 
 ### Cross-session continuity
@@ -608,7 +634,7 @@ with the handoff contract's finite context fork. This preserves its Luna xhigh
 model while inheriting recent main-agent context. Without a parent-built capsule
 or usage ledger, it reconciles every core and module-specific
 `agent_docs/` file against verified deployment facts, performs compact closing
-checks, handles the Git commit, and returns the final report. The report ends
+checks, reports Git state without changing it, and returns the final report. The report ends
 with exactly three statistics columns:
 `Worker name`, `Quantity` (distinct task names), and `Number of calls`
 (turn-starting assignments and follow-ups). Explorer has no closure
@@ -628,7 +654,8 @@ The five blocks are:
 
 ### 1. Workflow runtime — user level
 
-Location: `~/.codex/`
+Location: the resolved Codex home. The paths below show the default
+`~/.codex/`; a non-empty `CODEX_HOME` environment variable replaces it.
 
 - `~/.codex/agents/` contains all distributed worker TOMLs. The current
   enabled set is `executor_luna`, `executor_pro`, `reviewer_pro`,
@@ -664,7 +691,7 @@ are durable context, not private configuration.
 Primary resource:
 
 ```text
-~/.codex/codex_workflow/workflow_config.json
+<Codex home>/codex_workflow/workflow_config.json
 ```
 
 The resource currently contains:
@@ -681,12 +708,12 @@ The resource currently contains:
 
 Related configuration surfaces are:
 
-- `~/.codex/codex_workflow/resources/workflow_config.default.json`: immutable
+- `<Codex home>/codex_workflow/resources/workflow_config.default.json`: immutable
   package defaults and migration fallback;
-- `~/.codex/agents/*.toml`: materialized definitions for all distributed workers;
-- `~/.codex/config.toml`: workflow-owned Codex platform settings, merged into
+- `<Codex home>/agents/*.toml`: materialized definitions for all distributed workers;
+- `<Codex home>/config.toml`: workflow-owned Codex platform settings, merged into
   the user's existing configuration without replacing unrelated settings;
-- `~/.codex/codex_workflow/templates/agents/`: all distributed worker
+- `<Codex home>/codex_workflow/templates/agents/`: all distributed worker
   templates, including the alternate `executor_terra`.
 
 `workflow_config.json` is the source of the workflow-level values. The route
@@ -715,7 +742,7 @@ in `AGENTS.md` or in the hidden disabled entry point. It is not stored in
 
 ### 5. Guidance and lifecycle control — user level
 
-Location: `~/.codex/codex_workflow/`
+Location: `<Codex home>/codex_workflow/`
 
 - `user_AGENTS.md` contains the workflow marker, installed version marker,
   optional-check placeholder, and exact command prompts for
@@ -744,7 +771,7 @@ the runtime performs deterministic mutations. It is not project context or the
 worker execution layer.
 
 These five blocks are logical ownership boundaries, not five disjoint
-directories. For example, `~/.codex/codex_workflow/` hosts routes, guidance,
+directories. For example, `<Codex home>/codex_workflow/` hosts routes, guidance,
 configuration, templates, and backups. The distinction is about who owns the
 data and how it is consumed:
 
