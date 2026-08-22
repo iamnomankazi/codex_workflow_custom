@@ -28,7 +28,6 @@ from .project_ops import (
 )
 from .release import parse_semver
 from .runtime_ops import (
-    plan_installed_user_agents,
     plan_materialized_config,
     plan_runtime_files,
     plan_runtime_remove,
@@ -47,7 +46,7 @@ def plan_bootstrap(
     mutations.extend(project_plan.mutations)
     state = {
         "schema_version": RUNTIME_SCHEMA_VERSION,
-        "version": package.version,
+        "source_id": package.source_id,
         "owned_runtime_files": sorted(owned_runtime),
         "owned_workers": sorted(package.worker_names),
     }
@@ -57,7 +56,7 @@ def plan_bootstrap(
         deduplicate(mutations),
         project_plan.warnings,
         project_plan.agent_actions,
-        {"version": package.version},
+        {"source_id": package.source_id},
         cleanup_dirs=project_plan.cleanup_dirs,
     )
 
@@ -80,19 +79,23 @@ def plan_configure(
     available = {path.stem for path in templates.glob("*.toml")}
     proposed = WorkflowConfig.from_mapping(raw, available_workers=available)
     mutations = plan_materialized_config(runtime, proposed)
-    if proposed.auto_check_update != current.auto_check_update:
-        mutations.extend(plan_installed_user_agents(runtime, proposed))
     mutations.append(
         Mutation(runtime.runtime / "workflow_config.json", proposed.to_json().encode())
     )
     state = read_json(runtime.runtime / USER_STATE, default={})
+    source_id = state.get("source_id")
+    if not PackageLayout.is_source_id(source_id):
+        source_id = PackageLayout.resolve(runtime.runtime, allow_legacy=True).source_id
     state.update(
         {
             "schema_version": RUNTIME_SCHEMA_VERSION,
-            "version": (runtime.runtime / "VERSION").read_text(encoding="utf-8").strip(),
+            "source_id": source_id,
             "owned_workers": sorted(available),
         }
     )
+    # Old state used VERSION as its identity.  Once a local operation touches
+    # it, migrate to the content identity and stop carrying the legacy field.
+    state.pop("version", None)
     mutations.append(json_mutation(runtime.runtime / USER_STATE, state))
     return OperationPlan(
         "configure",
@@ -100,33 +103,6 @@ def plan_configure(
         [],
         [],
         {"configuration": proposed.to_mapping()},
-    )
-
-
-def plan_auto_check_update_setting(
-    runtime: RuntimePaths, *, enabled: bool
-) -> OperationPlan:
-    templates = runtime.runtime / "templates" / "agents"
-    current = load_config(runtime.runtime / "workflow_config.json", templates=templates)
-    raw = current.to_mapping()
-    raw["auto_check_update"] = enabled
-    proposed = WorkflowConfig.from_mapping(
-        raw,
-        available_workers={path.stem for path in templates.glob("*.toml")},
-    )
-    mutations = [
-        Mutation(
-            runtime.runtime / "workflow_config.json",
-            proposed.to_json().encode(),
-        )
-    ]
-    mutations.extend(plan_installed_user_agents(runtime, proposed))
-    return OperationPlan(
-        "set-auto-check-update",
-        mutations,
-        [],
-        [],
-        {"auto_check_update": enabled},
     )
 
 
@@ -171,7 +147,7 @@ def plan_update(
     backup_root = (
         runtime.runtime
         / ".backups"
-        / f"{installed.version}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
+        / f"{installed.source_id}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
     )
     mutations: list[Mutation] = []
     append_backup_mutations(mutations, backup_root, runtime, project)
@@ -196,7 +172,7 @@ def plan_update(
             mutations.append(Mutation(obsolete, None))
     state = {
         "schema_version": RUNTIME_SCHEMA_VERSION,
-        "version": incoming.version,
+        "source_id": incoming.source_id,
         "owned_runtime_files": sorted(owned_runtime),
         "owned_workers": sorted(incoming.worker_names),
     }
@@ -207,9 +183,9 @@ def plan_update(
         warnings,
         [],
         {
-            "from_version": installed.version,
-            "to_version": incoming.version,
-            "project_from_version": project_installed.version,
+            "from_source_id": installed.source_id,
+            "to_source_id": incoming.source_id,
+            "project_from_source_id": project_installed.source_id,
             "backup": str(backup_root),
         },
     )
@@ -220,21 +196,50 @@ def _project_installed_package(
     runtime: RuntimePaths,
     project: ProjectPaths,
 ) -> PackageLayout:
-    """Resolve the package version that produced this project's entry point."""
+    """Resolve the local source that produced this project's entry point.
+
+    New project state uses a deterministic source identity.  The semantic
+    ``workflow_version`` field is read only as a narrowly-scoped migration path
+    for installations created before source identities existed.
+    """
 
     if not project.active.exists() and not project.disabled.exists():
         return installed
     state = read_json(project.state, default={})
+    source_id = state.get("source_id")
+    if source_id is not None:
+        if not PackageLayout.is_source_id(source_id):
+            raise ValidationError("project source_id state must be a valid sha256 identity")
+        if source_id == installed.source_id:
+            return installed
+        source_backups = (runtime.runtime / ".source_backup").resolve()
+        historical_root = (source_backups / source_id).resolve()
+        try:
+            historical_root.relative_to(source_backups)
+        except ValueError as error:
+            raise ValidationError("project source_id resolves outside source backups") from error
+        if not historical_root.is_dir():
+            raise ValidationError(
+                "the historical workflow source for this project is missing: "
+                f"{historical_root}; restore it from backup before updating the project"
+            )
+        historical = PackageLayout.resolve(historical_root, allow_legacy=True)
+        if historical.source_id != source_id:
+            raise ValidationError(
+                "project source state and historical source backup identities disagree"
+            )
+        return historical
+
     version = state.get("workflow_version")
     if version is None:
-        # Pre-state installations can only be compared with the currently
-        # installed source, retaining the legacy migration behavior.
+        # Pre-state installations can only be associated with the currently
+        # installed source; the next update writes a source_id.
         return installed
     if not isinstance(version, str) or not version:
         raise ValidationError("project workflow_version state must be a non-empty string")
+    # Legacy migration is the only remaining semantic-version read.  It is
+    # never used to decide whether an incoming local source is newer or older.
     parse_semver(version)
-    if version == installed.version:
-        return installed
     source_backups = (runtime.runtime / ".source_backup").resolve()
     historical_root = (source_backups / version).resolve()
     try:
@@ -243,11 +248,11 @@ def _project_installed_package(
         raise ValidationError("project workflow_version resolves outside source backups") from error
     if not historical_root.is_dir():
         raise ValidationError(
-            "the historical workflow source for this project is missing: "
+            "the historical workflow source required for this legacy project is missing: "
             f"{historical_root}; restore it from backup before updating the project"
         )
     historical = PackageLayout.resolve(historical_root, allow_legacy=True)
-    if historical.version != version:
+    if historical.legacy_version != version:
         raise ValidationError(
             "project workflow state and historical source backup versions disagree"
         )

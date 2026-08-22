@@ -12,6 +12,12 @@ Spawn one fresh worker with:
   lowercase, underscore-safe deployment identifier
 - `fork_turns="200"`
 
+Reconcile the live `<project>/agent_docs/` framework only. The repository's
+`codex_workflow/project_docs/` files and an installed
+`<Codex home>/codex_workflow/templates/project_docs/` copy are bootstrap-marked
+templates and must never receive session-specific content; if no live project
+surface exists, report that limitation.
+
 Pass only the active route, deployment ID, and closure state (`complete`,
 `paused`, or `blocked`). Do not summarize the session, build a task capsule, or
 maintain a usage ledger. The automatic finite fork passes recent main-agent

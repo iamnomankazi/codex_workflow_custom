@@ -31,7 +31,9 @@ one Parent slot (20 children becomes 21 total), never emits
 ▶️ Send:
 
 ```text
-Download and extract the latest `codex_workflow-<version>.zip` asset (not GitHub's Source code archive) from https://github.com/iamnomankazi/codex_workflow_custom/releases. Verify it against `SHA256SUMS`, then read the bundled `codex_workflow/bootstrap.md` and follow it to complete the initial installation.
+From a checkout of this repository, read `codex_workflow/bootstrap.md` and
+follow its local-source validation and bootstrap procedure. The workflow does
+not download public release packages or contact an upstream repository.
 ```
 > ⭐ Recommended: use 5.6 Luna xhigh for installation. 
 
@@ -80,8 +82,7 @@ Send these exact commands to Codex from the relevant project directory:
 | `codex_workflow --install` | Install workflow in the current project and initialize its documentation framework. |
 | `codex_workflow --configure` | Configure the default executor, reasoning effort, and worker limits. |
 | `codex_workflow --personal` | Add or update project-specific workflow preferences. |
-| `codex_workflow --check-update` | Check for a newer release without installing it. |
-| `codex_workflow --update` | Download, verify, and install the latest eligible release. |
+| `codex_workflow --update` | Apply a deliberate local-source update; external release updates are disabled. |
 | `codex_workflow --disable` / `codex_workflow --enable` | Disable or re-enable the workflow for the current project. |
 | `codex_workflow --remove` | Remove the installed workflow after a destructive dry-run and confirmation. |
 

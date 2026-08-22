@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +12,6 @@ from ._toml import tomllib
 from .config import load_config, render_heavy_route
 from .errors import ValidationError
 from .markers import (
-    AUTO_CHECK_UPDATE_PLACEHOLDER,
     USER_MANAGED,
     extract,
     validate_project_template,
@@ -21,6 +22,12 @@ from .personalization import materialize_personalization
 PROJECT_ID = "<!-- codex-workflow-id: viettran-edgeAI/codex_workflow -->"
 USER_ID = "<!-- codex-workflow-user-id: viettran-edgeAI/codex_workflow -->"
 WORKER_MARKER = re.compile(r"^# codex-workflow-worker: ([A-Za-z0-9_-]+)$", re.MULTILINE)
+LEGACY_VERSION = re.compile(
+    r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
+SOURCE_ID = re.compile(r"sha256-[0-9a-f]{64}")
 PROJECT_STATE = "state.json"
 USER_STATE = "install_state.json"
 
@@ -35,12 +42,12 @@ class PackageLayout:
     @classmethod
     def resolve(cls, root: Path, *, allow_legacy: bool = False) -> "PackageLayout":
         root = root.resolve()
-        if not (root / "VERSION").is_file():
+        if not (root / "workflow.py").is_file():
             nested = root / "codex_workflow"
-            if nested.is_dir() and (nested / "VERSION").is_file():
+            if nested.is_dir() and (nested / "workflow.py").is_file():
                 root = nested
             else:
-                raise ValidationError(f"package root does not contain VERSION: {root}")
+                raise ValidationError(f"package root does not contain workflow.py: {root}")
         if (root / "templates" / "AGENTS.md").is_file():
             layout = cls(
                 root,
@@ -63,28 +70,19 @@ class PackageLayout:
         ]
         if symlinks:
             raise ValidationError(f"package contains symlinks: {symlinks[:3]}")
-        version = self.version
-        if not re.fullmatch(
-            r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-            r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-            r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
-            version,
-        ):
-            raise ValidationError(f"invalid package VERSION: {version!r}")
+        version = self.legacy_version
+        if version is not None and not LEGACY_VERSION.fullmatch(version):
+            raise ValidationError(f"invalid legacy package VERSION: {version!r}")
         user_agents = self.root / "user_AGENTS.md"
         if not user_agents.is_file():
             raise ValidationError("package user_AGENTS.md marker is missing")
         user_agents_text = user_agents.read_text(encoding="utf-8")
         if USER_ID not in user_agents_text:
             raise ValidationError("package user_AGENTS.md marker is missing")
-        if f"<!-- codex-workflow-version: {version} -->" not in user_agents_text:
+        if version is not None and f"<!-- codex-workflow-version: {version} -->" not in user_agents_text:
             raise ValidationError("package version and user marker disagree")
-        managed_user_agents = extract(user_agents_text, USER_MANAGED)
+        extract(user_agents_text, USER_MANAGED)
         if not allow_legacy:
-            if managed_user_agents.count(AUTO_CHECK_UPDATE_PLACEHOLDER) != 1:
-                raise ValidationError(
-                    "package user_AGENTS.md auto-check placeholder is missing or duplicated"
-                )
             required = [
                 "workflow.py",
                 "resources/workflow_config.default.json",
@@ -95,12 +93,7 @@ class PackageLayout:
                 "install.md",
                 "bootstrap.md",
                 "update.md",
-                "check_update.md",
                 "remove.md",
-                "enable_auto_check_update.md",
-                "enable_auto_update.md",
-                "disable_auto_update.md",
-                "disable_auto_check_update.md",
                 "configuration_guide.md",
                 "personalization_guide.md",
                 "enable.md",
@@ -119,19 +112,11 @@ class PackageLayout:
                 "runtime/release.py",
                 "runtime/runtime_ops.py",
                 "runtime/transaction.py",
-                "resources/auto_check_update.md",
                 "resources/personalization.md",
             ]
             missing = [relative for relative in required if not (self.root / relative).is_file()]
             if missing:
                 raise ValidationError(f"package runtime files missing: {missing}")
-            auto_check_instruction = (
-                self.root / "resources" / "auto_check_update.md"
-            ).read_text(encoding="utf-8")
-            if "auto-check-update --json" not in auto_check_instruction:
-                raise ValidationError(
-                    "package automatic-check instruction is missing its command"
-                )
             validate_project_template(self.project_template.read_text(encoding="utf-8"))
         required_docs = {
             "project_overview.md",
@@ -172,11 +157,111 @@ class PackageLayout:
             )
 
     @property
-    def version(self) -> str:
-        lines = (self.root / "VERSION").read_text(encoding="utf-8").splitlines()
+    def legacy_version(self) -> str | None:
+        version_path = self.root / "VERSION"
+        if not version_path.is_file():
+            return None
+        lines = version_path.read_text(encoding="utf-8").splitlines()
         if len(lines) != 1 or not lines[0]:
             raise ValidationError("VERSION must contain exactly one non-empty line")
         return lines[0]
+
+    @property
+    def version(self) -> str:
+        """Return the legacy VERSION value for migration compatibility only."""
+
+        version = self.legacy_version
+        if version is None:
+            raise ValidationError("package has no legacy VERSION")
+        return version
+
+    @property
+    def source_id(self) -> str:
+        """Return a deterministic identity for this local source tree.
+
+        The identity is content based and intentionally independent of semantic
+        release numbers. Template files are normalized to their installed
+        ``templates/`` paths so a source checkout and its materialized runtime
+        produce the same identity.
+        """
+
+        # Materialized runtimes render a few source files (notably the Heavy
+        # route and user prompt block). Their install manifest records the
+        # source identity before rendering, so use that verified identity when
+        # resolving an installed runtime rather than hashing generated output.
+        if self.project_template.parent.name == "templates":
+            state_path = self.root / USER_STATE
+            if state_path.is_file():
+                try:
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    state = None
+                recorded = state.get("source_id") if isinstance(state, dict) else None
+                if self.is_source_id(recorded):
+                    return recorded
+                legacy = state.get("version") if isinstance(state, dict) else None
+                if isinstance(legacy, str) and LEGACY_VERSION.fullmatch(legacy):
+                    snapshot = self.root / ".source_backup" / legacy
+                    if snapshot.is_dir():
+                        try:
+                            return PackageLayout.resolve(
+                                snapshot, allow_legacy=True
+                            ).source_id
+                        except (OSError, ValidationError):
+                            pass
+
+        entries: dict[str, Path] = {
+            "templates/AGENTS.md": self.project_template,
+        }
+        entries.update(
+            {
+                f"templates/agents/{path.name}": path
+                for path in self.agent_templates.glob("*")
+                if path.is_file()
+            }
+        )
+        entries.update(
+            {
+                f"templates/project_docs/{path.name}": path
+                for path in self.project_docs.glob("*")
+                if path.is_file()
+            }
+        )
+        ignored_roots = {
+            "agents",
+            "project_docs",
+            "templates",
+            ".source_backup",
+            ".backups",
+            "__pycache__",
+        }
+        ignored_files = {"AGENTS.md", "workflow_config.json", USER_STATE}
+        for path in self.root.rglob("*"):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(self.root)
+            if (
+                relative.parts[0] in ignored_roots
+                or relative.as_posix() in ignored_files
+                or "__pycache__" in relative.parts
+                or path.suffix == ".pyc"
+            ):
+                continue
+            entries[relative.as_posix()] = path
+
+        digest = hashlib.sha256()
+        for relative, path in sorted(entries.items()):
+            relative_bytes = relative.encode("utf-8")
+            content = path.read_bytes()
+            digest.update(len(relative_bytes).to_bytes(8, "big"))
+            digest.update(relative_bytes)
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(content)
+        return f"sha256-{digest.hexdigest()}"
+
+    @staticmethod
+    def is_source_id(value: object) -> bool:
+        return isinstance(value, str) and SOURCE_ID.fullmatch(value) is not None
 
     @property
     def worker_names(self) -> set[str]:

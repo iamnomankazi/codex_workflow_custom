@@ -102,7 +102,9 @@ class WorkflowConfig:
             CONFIG_SCHEMA_VERSION,
             default,
             effort,
-            auto_check,
+            # Retain the legacy field for schema/migration compatibility, but
+            # never carry an enabled upstream-check state forward.
+            False,
             maximum,
             sol_maximum,
             report_size,

@@ -72,9 +72,11 @@ def plan_runtime_files(
         owned.add(target.relative_to(runtime.runtime).as_posix())
     mutations.append(Mutation(runtime.runtime / "workflow_config.json", config_bytes))
     owned.add("workflow_config.json")
-    mutations.extend(plan_user_agents(package, runtime, config))
+    mutations.extend(plan_user_agents(package, runtime))
     mutations.extend(plan_materialized_config(runtime, config, package=package))
-    backup = runtime.runtime / ".source_backup" / package.version
+    # Historical source snapshots are keyed by a deterministic content
+    # identity.  VERSION remains readable only for legacy installations.
+    backup = runtime.runtime / ".source_backup" / package.source_id
     for source in sorted(package.root.rglob("*")):
         if (
             source.is_file()
@@ -89,31 +91,23 @@ def plan_runtime_files(
     return mutations, owned
 
 
-def _render_user_managed(
-    source: str, instruction: str, config: WorkflowConfig
-) -> str:
+def _render_user_managed(source: str) -> str:
+    """Normalize the managed user block and retire legacy auto-check text."""
+
     managed = extract(source, USER_MANAGED)
-    if managed.count(AUTO_CHECK_UPDATE_PLACEHOLDER) != 1:
+    placeholder_count = managed.count(AUTO_CHECK_UPDATE_PLACEHOLDER)
+    if placeholder_count > 1:
         raise ValidationError(
-            "user_AGENTS.md auto-check placeholder is missing or duplicated"
+            "user_AGENTS.md legacy auto-check placeholder is duplicated"
         )
-    before, after = managed.split(AUTO_CHECK_UPDATE_PLACEHOLDER)
-    sections = [before.strip()]
-    if config.auto_check_update:
-        sections.append(instruction.strip())
-    sections.append(after.strip())
-    return "\n\n".join(section for section in sections if section)
+    return managed.replace(AUTO_CHECK_UPDATE_PLACEHOLDER, "").strip()
 
 
 def _plan_user_agents_from_sources(
-    source_path: Path,
-    instruction_path: Path,
-    runtime: RuntimePaths,
-    config: WorkflowConfig,
+    source_path: Path, runtime: RuntimePaths
 ) -> list[Mutation]:
     source = source_path.read_text(encoding="utf-8")
-    instruction = instruction_path.read_text(encoding="utf-8")
-    managed = _render_user_managed(source, instruction, config)
+    managed = _render_user_managed(source)
     if runtime.user_agents.is_file():
         current = runtime.user_agents.read_text(encoding="utf-8")
         if USER_MANAGED.start in current or USER_MANAGED.end in current:
@@ -125,25 +119,10 @@ def _plan_user_agents_from_sources(
     return [text_mutation(runtime.user_agents, rendered)]
 
 
-def plan_user_agents(
-    package: PackageLayout, runtime: RuntimePaths, config: WorkflowConfig
-) -> list[Mutation]:
+def plan_user_agents(package: PackageLayout, runtime: RuntimePaths) -> list[Mutation]:
     return _plan_user_agents_from_sources(
         package.root / "user_AGENTS.md",
-        package.root / "resources" / "auto_check_update.md",
         runtime,
-        config,
-    )
-
-
-def plan_installed_user_agents(
-    runtime: RuntimePaths, config: WorkflowConfig
-) -> list[Mutation]:
-    return _plan_user_agents_from_sources(
-        runtime.runtime / "user_AGENTS.md",
-        runtime.runtime / "resources" / "auto_check_update.md",
-        runtime,
-        config,
     )
 
 

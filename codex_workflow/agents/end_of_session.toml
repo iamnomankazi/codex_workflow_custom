@@ -21,6 +21,12 @@ Preserve unrelated user work. Do not modify
 production code, tests, configuration, or Git state merely to improve
 documentation.
 
+Reconcile the live `<project>/agent_docs/` framework only. The package
+`codex_workflow/project_docs/` files and installed
+`<Codex home>/codex_workflow/templates/project_docs/` copies are
+bootstrap-marked templates; never place session-specific content in them.
+If no live project surface exists, report that limitation.
+
 ## Procedure
 
 1. Reconstruct the deployment goal, outcome, material changes, contract and

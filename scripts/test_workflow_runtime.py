@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import contextlib
-import io
 import os
 import re
 import shutil
@@ -43,7 +41,6 @@ from runtime.lifecycle import (
     RuntimePaths,
     materialize_personalization,
     plan_bootstrap,
-    plan_auto_check_update_setting,
     plan_configure,
     plan_enable,
     plan_personalize,
@@ -52,7 +49,6 @@ from runtime.lifecycle import (
     plan_update,
 )
 from runtime.markers import (
-    AUTO_CHECK_UPDATE_PLACEHOLDER,
     PROJECT_LOCAL,
     PROJECT_PERSONALIZATION,
     USER_MANAGED,
@@ -61,29 +57,16 @@ from runtime.markers import (
 )
 from runtime.migrations import migrate_config_resource
 from runtime.plan import OperationPlan, read_string_list, resolve_owned_runtime_path
-from runtime.release import (
-    ReleaseSelection,
-    parse_semver,
-    select_releases,
-    summarize_release_notes,
-)
+from runtime.release import parse_semver
 from runtime.transaction import Mutation, apply
 
 
 class MarkerTests(unittest.TestCase):
-    def test_user_command_contract_keeps_automatic_check_optional(self) -> None:
+    def test_user_command_contract_has_no_external_update_surface(self) -> None:
         instructions = (PACKAGE / "user_AGENTS.md").read_text(encoding="utf-8")
-        auto_check = (PACKAGE / "resources" / "auto_check_update.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertNotIn("auto-check-update --json", instructions)
-        self.assertEqual(instructions.count(AUTO_CHECK_UPDATE_PLACEHOLDER), 1)
-        self.assertIn("auto-check-update --json", auto_check)
-        self.assertIn("codex_workflow --check-update", instructions)
-        self.assertIn("codex_workflow --enable_auto_check_update", instructions)
-        self.assertIn("codex_workflow --disable_auto_check_update", instructions)
-        self.assertIn("codex_workflow --enable_auto_update", instructions)
-        self.assertIn("codex_workflow --disable_auto_update", instructions)
+        self.assertNotIn("auto-check-update", instructions)
+        self.assertNotIn("check-update", instructions)
+        self.assertNotIn("auto_check_update", instructions)
         self.assertIn("codex_workflow --remove", instructions)
 
         personalization = (PACKAGE / "personalization_guide.md").read_text(
@@ -102,6 +85,26 @@ class MarkerTests(unittest.TestCase):
         )
         self.assertEqual(extract(rendered, PROJECT_PERSONALIZATION), "Personal rule.")
         self.assertEqual(extract(rendered, PROJECT_LOCAL), "# Existing\nKeep this.")
+
+    def test_package_project_docs_are_neutral_bootstrap_templates(self) -> None:
+        documents = (
+            "project_overview.md",
+            "project_core_tech.md",
+            "project_structure.md",
+            "project_progress.md",
+            "project_diary.md",
+            "latest_session_work.md",
+        )
+        for name in documents:
+            text = (PACKAGE / "project_docs" / name).read_text(encoding="utf-8")
+            self.assertIn("codex-workflow-bootstrap-template", text)
+            self.assertNotIn("cleanup_20260822", text)
+            if name != "latest_session_work.md":
+                self.assertNotIn("No previous workflow session has been recorded.", text)
+
+        handoff = (PACKAGE / "end_of_session.md").read_text(encoding="utf-8")
+        self.assertIn("live `<project>/agent_docs/`", handoff)
+        self.assertIn("bootstrap-marked", handoff)
 
     def test_operational_policies_are_compact_and_knowledge_aware(self) -> None:
         names = (
@@ -406,39 +409,7 @@ class MarkerTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 PackageLayout.resolve(root)
 
-    def test_package_requires_auto_check_placeholder(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "codex_workflow"
-            shutil.copytree(
-                PACKAGE,
-                root,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-            )
-            path = root / "user_AGENTS.md"
-            path.write_text(
-                path.read_text(encoding="utf-8").replace(
-                    AUTO_CHECK_UPDATE_PLACEHOLDER, "", 1
-                ),
-                encoding="utf-8",
-            )
-            with self.assertRaises(ValidationError):
-                PackageLayout.resolve(root)
-
-    def test_package_requires_auto_check_instruction_command(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "codex_workflow"
-            shutil.copytree(
-                PACKAGE,
-                root,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-            )
-            (root / "resources" / "auto_check_update.md").write_text(
-                "Missing command.\n", encoding="utf-8"
-            )
-            with self.assertRaises(ValidationError):
-                PackageLayout.resolve(root)
-
-    def test_update_help_does_not_publish_local_source_option(self) -> None:
+    def test_update_help_exposes_only_the_local_source_operation(self) -> None:
         completed = subprocess.run(
             [sys.executable, "-B", str(PACKAGE / "workflow.py"), "update", "--help"],
             check=False,
@@ -446,24 +417,44 @@ class MarkerTests(unittest.TestCase):
             text=True,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertNotIn("--source", completed.stdout)
+        self.assertIn("--source", completed.stdout)
+        self.assertIn("local package root", completed.stdout)
         self.assertNotIn("--apply", completed.stdout)
 
-    def test_explicit_auto_check_commands_and_legacy_aliases_are_available(self) -> None:
+    def test_top_level_help_omits_retired_update_commands(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "-B", str(PACKAGE / "workflow.py"), "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertNotIn("check-update", completed.stdout)
+        self.assertNotIn("auto-update", completed.stdout)
+
+    def test_retired_update_commands_fail_closed_without_network(self) -> None:
         for command in (
+            "auto-check-update",
+            "check-update",
             "enable-auto-check-update",
             "disable-auto-check-update",
             "enable-auto-update",
             "disable-auto-update",
-            "check-update",
         ):
             completed = subprocess.run(
-                [sys.executable, "-B", str(PACKAGE / "workflow.py"), command, "--help"],
+                [
+                    sys.executable,
+                    "-B",
+                    str(PACKAGE / "workflow.py"),
+                    command,
+                    "--json",
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            self.assertIn("external release updates are disabled", completed.stdout)
 
     def test_configure_help_omits_handoff_context_option(self) -> None:
         completed = subprocess.run(
@@ -1096,17 +1087,11 @@ class CodexHomeInstructionContractTests(unittest.TestCase):
         "medium_route.md",
         "install.md",
         "update.md",
-        "check_update.md",
         "remove.md",
         "enable.md",
         "disable.md",
-        "enable_auto_check_update.md",
-        "disable_auto_check_update.md",
-        "enable_auto_update.md",
-        "disable_auto_update.md",
         "configuration_guide.md",
         "personalization_guide.md",
-        "resources/auto_check_update.md",
     )
 
     RULE_CARRYING_FILES = tuple(
@@ -1169,12 +1154,7 @@ class CodexHomeInstructionContractTests(unittest.TestCase):
         for guide in (
             "install.md",
             "update.md",
-            "check_update.md",
             "remove.md",
-            "enable_auto_check_update.md",
-            "disable_auto_check_update.md",
-            "enable_auto_update.md",
-            "disable_auto_update.md",
             "configuration_guide.md",
             "personalization_guide.md",
             "disable.md",
@@ -1232,81 +1212,6 @@ class CodexHomeInstructionContractTests(unittest.TestCase):
             entry = project.active.read_text(encoding="utf-8")
             self.assertIn("<Codex home>/codex_workflow/heavy_route.md", entry)
             self.assertIn("otherwise use `~/.codex`", entry)
-
-
-class ReleaseTests(unittest.TestCase):
-    def test_check_update_reports_new_release_notes_without_mutation(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            home = Path(temporary) / "codex-home"
-            runtime = home / "codex_workflow"
-            runtime.mkdir(parents=True)
-            (runtime / "VERSION").write_text("1.1.1\n", encoding="utf-8")
-            release = ReleaseSelection(
-                "1.2.0",
-                parse_semver("1.2.0"),
-                "codex_workflow-1.2.0.zip",
-                "https://example/1.2.0.zip",
-                "https://example/SHA256SUMS",
-                "## Changes\n- Add release-note summaries.",
-                "https://example/releases/1.2.0",
-            )
-            output = io.StringIO()
-            argv = ["workflow.py", "check-update", "--codex-home", str(home), "--json"]
-            with (
-                mock.patch.object(workflow_cli, "select_releases", return_value=[release]),
-                mock.patch.object(sys, "argv", argv),
-                contextlib.redirect_stdout(output),
-            ):
-                self.assertEqual(workflow_cli.main(), 0)
-            summary = json.loads(output.getvalue())
-            self.assertEqual(summary["status"], "update available")
-            self.assertEqual(summary["updates"][0]["version"], "1.2.0")
-            self.assertIn("release-note summaries", summary["summary"])
-            self.assertEqual((runtime / "VERSION").read_text(), "1.1.1\n")
-
-    def test_select_releases_keeps_installable_versions_and_notes(self) -> None:
-        records = [
-            {
-                "tag_name": "v1.3.0",
-                "draft": False,
-                "body": "## Changes\n- Add explicit update summaries.",
-                "html_url": "https://github.com/example/releases/1.3.0",
-                "assets": [
-                    {
-                        "name": "codex_workflow-1.3.0.zip",
-                        "browser_download_url": "https://example/1.3.0.zip",
-                    },
-                    {"name": "SHA256SUMS", "browser_download_url": "https://example/sums"},
-                ],
-            },
-            {
-                "tag_name": "v1.2.0",
-                "draft": False,
-                "body": "- Older change",
-                "assets": [
-                    {
-                        "name": "codex_workflow-1.2.0.zip",
-                        "browser_download_url": "https://example/1.2.0.zip",
-                    },
-                    {"name": "SHA256SUMS", "browser_download_url": "https://example/sums"},
-                ],
-            },
-            {"tag_name": "v1.4.0", "draft": True, "assets": []},
-        ]
-        with mock.patch("runtime.release._read_json_url", return_value=records):
-            releases = select_releases()
-        self.assertEqual([release.version_text for release in releases], ["1.3.0", "1.2.0"])
-        self.assertIn("explicit update summaries", releases[0].release_notes)
-
-    def test_release_note_summary_strips_markdown_and_limits_length(self) -> None:
-        summary = summarize_release_notes(
-            "## Changes\n- `check-update` now reports [notes](https://example)."
-        )
-        self.assertEqual(summary, "Changes check-update now reports notes.")
-        self.assertEqual(
-            summarize_release_notes("", max_length=10),
-            "No release notes were provided.",
-        )
 
 
 class TransactionTests(unittest.TestCase):
@@ -1419,8 +1324,8 @@ class LifecycleIntegrationTests(unittest.TestCase):
         self.assertNotIn("max_threads", parsed_config.get("agents", {}))
         self.assertNotIn("enabled", parsed_config.get("agents", {}))
         installed_user_agents = self.runtime.user_agents.read_text(encoding="utf-8")
-        self.assertNotIn("auto-check-update --json", installed_user_agents)
-        self.assertNotIn(AUTO_CHECK_UPDATE_PLACEHOLDER, installed_user_agents)
+        self.assertNotIn("auto-check-update", installed_user_agents)
+        self.assertNotIn("check-update", installed_user_agents)
         self.assertEqual(len(plan.agent_actions), 1)
         action = plan.agent_actions[0]
         self.assertEqual(action["role"], "doc-writer")
@@ -1447,6 +1352,111 @@ class LifecycleIntegrationTests(unittest.TestCase):
             set(repeated.agent_actions[0]["recovery_files"]),
             set(repeated.agent_actions[0]["framework"]),
         )
+
+    def test_bootstrap_state_uses_content_identity_not_semantic_version(self) -> None:
+        plan = self.bootstrap()
+        state = json.loads(
+            (self.runtime.runtime / "install_state.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(state["source_id"], self.package.source_id)
+        self.assertNotIn("version", state)
+        self.assertEqual(plan.details["source_id"], self.package.source_id)
+        self.assertTrue(
+            (self.runtime.runtime / ".source_backup" / self.package.source_id).is_dir()
+        )
+
+    def test_changed_source_without_version_bump_gets_new_identity(self) -> None:
+        self.bootstrap()
+        unchanged = plan_update(self.package, self.runtime, self.project)
+        self.assertEqual(unchanged.details["to_source_id"], self.package.source_id)
+        unchanged.apply()
+
+        incoming = self.incoming_package("same-version-change")
+        incoming.project_template.write_text(
+            incoming.project_template.read_text(encoding="utf-8").replace(
+                "## Working State", "## Working State (local source change)"
+            ),
+            encoding="utf-8",
+        )
+        incoming = PackageLayout.resolve(incoming.root)
+        self.assertEqual(incoming.legacy_version, self.package.legacy_version)
+        self.assertNotEqual(incoming.source_id, self.package.source_id)
+        plan_update(incoming, self.runtime, self.project).apply()
+
+        state = json.loads(
+            (self.runtime.runtime / "install_state.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(state["source_id"], incoming.source_id)
+        self.assertNotIn("version", state)
+        self.assertTrue(
+            (self.runtime.runtime / ".source_backup" / self.package.source_id).is_dir()
+        )
+        self.assertTrue(
+            (self.runtime.runtime / ".source_backup" / incoming.source_id).is_dir()
+        )
+
+    def test_legacy_workflow_version_state_migrates_from_version_snapshot(self) -> None:
+        self.bootstrap()
+        current_snapshot = self.runtime.runtime / ".source_backup" / self.package.source_id
+        legacy_snapshot = self.runtime.runtime / ".source_backup" / "1.1.2"
+        shutil.copytree(current_snapshot, legacy_snapshot)
+        (legacy_snapshot / "VERSION").write_text("1.1.2\n", encoding="utf-8")
+        legacy_agents = (legacy_snapshot / "user_AGENTS.md").read_text(encoding="utf-8")
+        (legacy_snapshot / "user_AGENTS.md").write_text(
+            legacy_agents.replace("codex-workflow-version: 1.1.3", "codex-workflow-version: 1.1.2"),
+            encoding="utf-8",
+        )
+        runtime_state_path = self.runtime.runtime / "install_state.json"
+        runtime_state = json.loads(runtime_state_path.read_text(encoding="utf-8"))
+        runtime_state.pop("source_id")
+        runtime_state["version"] = "1.1.2"
+        runtime_state_path.write_text(json.dumps(runtime_state) + "\n", encoding="utf-8")
+        self.assertEqual(
+            PackageLayout.resolve(self.runtime.runtime).source_id,
+            PackageLayout.resolve(legacy_snapshot, allow_legacy=True).source_id,
+        )
+        state_path = self.project.state
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state.pop("source_id")
+        state["workflow_version"] = "1.1.2"
+        state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+
+        incoming = self.incoming_package("legacy-state-incoming")
+        plan_update(incoming, self.runtime, self.project).apply()
+        migrated = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(migrated["source_id"], incoming.source_id)
+        self.assertNotIn("workflow_version", migrated)
+
+    def test_package_without_version_uses_source_identity(self) -> None:
+        source_root = self.root / "versionless" / "codex_workflow"
+        shutil.copytree(
+            PACKAGE,
+            source_root,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+        (source_root / "VERSION").unlink()
+        user_agents = (source_root / "user_AGENTS.md").read_text(encoding="utf-8")
+        (source_root / "user_AGENTS.md").write_text(
+            "\n".join(
+                line
+                for line in user_agents.splitlines()
+                if "codex-workflow-version:" not in line
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        package = PackageLayout.resolve(source_root)
+        self.assertIsNone(package.legacy_version)
+        self.assertTrue(PackageLayout.is_source_id(package.source_id))
+        runtime = RuntimePaths(self.root / "versionless-home")
+        project = ProjectPaths(self.root / "versionless-project")
+        project.root.mkdir()
+        plan = plan_bootstrap(package, runtime, project)
+        self.assertEqual(plan.details["source_id"], package.source_id)
+        plan.apply()
+        state = json.loads((runtime.runtime / "install_state.json").read_text())
+        self.assertEqual(state["source_id"], package.source_id)
+        self.assertNotIn("version", state)
 
     def test_bootstrap_cleans_project_staging_and_updates_gitignore(self) -> None:
         staging = self.project_root / "Codex_Workflow"
@@ -1523,17 +1533,18 @@ class LifecycleIntegrationTests(unittest.TestCase):
         state = json.loads((self.runtime.runtime / "install_state.json").read_text())
         self.assertIn("explorer", state["owned_workers"])
 
-    def test_configure_materializes_auto_check_instruction_when_changed(self) -> None:
+    def test_configure_forces_legacy_auto_check_state_disabled(self) -> None:
         self.bootstrap()
-        plan_configure(self.runtime, {"auto_check_update": True}).apply()
+        config_path = self.runtime.runtime / "workflow_config.json"
+        current = json.loads(config_path.read_text(encoding="utf-8"))
+        current["auto_check_update"] = True
+        config_path.write_text(json.dumps(current) + "\n", encoding="utf-8")
+        plan_configure(self.runtime, {"report_package_size": 251}).apply()
         configured = json.loads(
-            (self.runtime.runtime / "workflow_config.json").read_text(encoding="utf-8")
+            config_path.read_text(encoding="utf-8")
         )
-        self.assertTrue(configured["auto_check_update"])
-        self.assertIn(
-            "auto-check-update --json",
-            self.runtime.user_agents.read_text(encoding="utf-8"),
-        )
+        self.assertFalse(configured["auto_check_update"])
+        self.assertNotIn("auto-check-update", self.runtime.user_agents.read_text(encoding="utf-8"))
 
     def test_personalize_and_enable_disable_preserve_regions(self) -> None:
         self.bootstrap(existing_agents="Local policy.\n")
@@ -1588,11 +1599,6 @@ class LifecycleIntegrationTests(unittest.TestCase):
                 "max_concurrent_workers": 7,
             },
         ).apply()
-        plan_auto_check_update_setting(self.runtime, enabled=True).apply()
-        self.assertIn(
-            "auto-check-update --json",
-            self.runtime.user_agents.read_text(encoding="utf-8"),
-        )
         installed_config_path = self.runtime.runtime / "workflow_config.json"
         (self.runtime.agents / "executor_luna.toml").write_text(
             "# local worker override\n", encoding="utf-8"
@@ -1617,11 +1623,8 @@ class LifecycleIntegrationTests(unittest.TestCase):
         self.assertEqual(updated_config["default_executor"], "executor_terra")
         self.assertEqual(updated_config["max_concurrent_workers"], 7)
         self.assertEqual(updated_config["default_executor_reasoning_effort"], "high")
-        self.assertTrue(updated_config["auto_check_update"])
-        self.assertIn(
-            "auto-check-update --json",
-            self.runtime.user_agents.read_text(encoding="utf-8"),
-        )
+        self.assertFalse(updated_config["auto_check_update"])
+        self.assertNotIn("auto-check-update", self.runtime.user_agents.read_text(encoding="utf-8"))
         self.assertNotIn(
             "local worker override",
             (self.runtime.agents / "executor_luna.toml").read_text(encoding="utf-8"),
@@ -1645,12 +1648,79 @@ class LifecycleIntegrationTests(unittest.TestCase):
 
         plan_update(incoming, self.runtime, self.project).apply()
         second_plan = plan_update(incoming, self.runtime, second)
-        self.assertEqual(second_plan.details["from_version"], "1.2.0")
-        self.assertEqual(second_plan.details["project_from_version"], PACKAGE_VERSION)
+        self.assertEqual(second_plan.details["from_source_id"], incoming.source_id)
+        self.assertEqual(
+            second_plan.details["project_from_source_id"], self.package.source_id
+        )
         second_plan.apply()
         self.assertIn(
             "## Working State (1.2)", second.active.read_text(encoding="utf-8")
         )
+
+    def test_same_legacy_version_projects_resolve_old_snapshot_after_first_update(self) -> None:
+        self.bootstrap()
+        second_root = self.root / "legacy-second-project"
+        second_root.mkdir()
+        second = ProjectPaths(second_root)
+        plan_project_install(self.package, second).apply()
+
+        legacy_snapshot = self.runtime.runtime / ".source_backup" / PACKAGE_VERSION
+        shutil.copytree(
+            self.runtime.runtime / ".source_backup" / self.package.source_id,
+            legacy_snapshot,
+        )
+        old_workflow = (legacy_snapshot / "workflow.py").read_bytes()
+
+        # Reconstruct the old install/project state: both projects were made
+        # by VERSION 1.1.3 and retain only the legacy project field.
+        runtime_state_path = self.runtime.runtime / "install_state.json"
+        runtime_state = json.loads(runtime_state_path.read_text(encoding="utf-8"))
+        runtime_state.pop("source_id")
+        runtime_state["version"] = PACKAGE_VERSION
+        runtime_state_path.write_text(json.dumps(runtime_state) + "\n", encoding="utf-8")
+        for project in (self.project, second):
+            state = json.loads(project.state.read_text(encoding="utf-8"))
+            state.pop("source_id")
+            state["workflow_version"] = PACKAGE_VERSION
+            project.state.write_text(json.dumps(state) + "\n", encoding="utf-8")
+
+        incoming = self.incoming_package("same-legacy-version-incoming")
+        incoming.project_template.write_text(
+            incoming.project_template.read_text(encoding="utf-8").replace(
+                "## Working State", "## Working State (same legacy version)"
+            ),
+            encoding="utf-8",
+        )
+        incoming = PackageLayout.resolve(incoming.root)
+        self.assertEqual(incoming.legacy_version, PACKAGE_VERSION)
+        self.assertNotEqual(incoming.source_id, self.package.source_id)
+
+        # Project A moves the global runtime to the changed source.
+        plan_update(incoming, self.runtime, self.project).apply()
+        self.assertEqual((legacy_snapshot / "workflow.py").read_bytes(), old_workflow)
+        self.assertTrue(
+            (self.runtime.runtime / ".source_backup" / incoming.source_id).is_dir()
+        )
+
+        # Project B still has only workflow_version=1.1.3. The resolver must
+        # use the retained old snapshot, not the new global runtime with the
+        # same legacy VERSION.
+        second_plan = plan_update(incoming, self.runtime, second)
+        self.assertEqual(
+            second_plan.details["project_from_source_id"], self.package.source_id
+        )
+        self.assertNotEqual(
+            second_plan.details["project_from_source_id"], incoming.source_id
+        )
+        second_plan.apply()
+        self.assertIn(
+            "## Working State (same legacy version)",
+            second.active.read_text(encoding="utf-8"),
+        )
+        migrated = json.loads(second.state.read_text(encoding="utf-8"))
+        self.assertEqual(migrated["source_id"], incoming.source_id)
+        self.assertNotIn("workflow_version", migrated)
+        self.assertEqual((legacy_snapshot / "workflow.py").read_bytes(), old_workflow)
 
     def test_update_applies_config_migration_without_resetting_user_values(self) -> None:
         self.bootstrap()
@@ -1903,94 +1973,25 @@ class LifecycleIntegrationTests(unittest.TestCase):
             )
         self.assertTrue(outside.is_file())
 
-    def test_disable_auto_check_is_scoped_and_skips_network_check(self) -> None:
-        self.bootstrap()
-        default_user_agents = self.runtime.user_agents.read_text(encoding="utf-8")
-        self.assertNotIn("auto-check-update --json", default_user_agents)
-        self.runtime.user_agents.write_text(
-            default_user_agents + "\nUser-level custom instruction.\n",
-            encoding="utf-8",
-        )
-        plan = plan_auto_check_update_setting(self.runtime, enabled=False)
-        self.assertEqual(len(plan.mutations), 2)
-        plan.apply()
-        configured = json.loads(
-            (self.runtime.runtime / "workflow_config.json").read_text(encoding="utf-8")
-        )
-        self.assertFalse(configured["auto_check_update"])
-        self.assertNotIn(
-            "auto-check-update --json",
-            self.runtime.user_agents.read_text(encoding="utf-8"),
-        )
+    def test_update_without_source_fails_closed(self) -> None:
         completed = subprocess.run(
             [
                 sys.executable,
                 "-B",
-                str(self.runtime.runtime / "workflow.py"),
-                "auto-check-update",
+                str(PACKAGE / "workflow.py"),
+                "update",
                 "--codex-home",
                 str(self.codex_home),
+                "--project",
+                str(self.project_root),
                 "--json",
             ],
             check=False,
             capture_output=True,
             text=True,
         )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(json.loads(completed.stdout)["status"], "disabled")
-
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-B",
-                str(self.runtime.runtime / "workflow.py"),
-                "enable-auto-check-update",
-                "--codex-home",
-                str(self.codex_home),
-                "--json",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertTrue(
-            json.loads(
-                (self.runtime.runtime / "workflow_config.json").read_text(
-                    encoding="utf-8"
-                )
-            )["auto_check_update"]
-        )
-        enabled_user_agents = self.runtime.user_agents.read_text(encoding="utf-8")
-        self.assertIn("auto-check-update --json", enabled_user_agents)
-        self.assertIn("User-level custom instruction.", enabled_user_agents)
-        self.assertNotIn(AUTO_CHECK_UPDATE_PLACEHOLDER, enabled_user_agents)
-
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-B",
-                str(self.runtime.runtime / "workflow.py"),
-                "disable-auto-check-update",
-                "--codex-home",
-                str(self.codex_home),
-                "--json",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertFalse(
-            json.loads(
-                (self.runtime.runtime / "workflow_config.json").read_text(
-                    encoding="utf-8"
-                )
-            )["auto_check_update"]
-        )
-        disabled_user_agents = self.runtime.user_agents.read_text(encoding="utf-8")
-        self.assertNotIn("auto-check-update --json", disabled_user_agents)
-        self.assertIn("User-level custom instruction.", disabled_user_agents)
+        self.assertEqual(completed.returncode, 1, completed.stderr)
+        self.assertIn("pass --source", json.loads(completed.stdout)["error"])
 
     def test_legacy_entry_with_edits_requires_reviewed_local_instructions(self) -> None:
         self.bootstrap()
@@ -2070,7 +2071,7 @@ class LifecycleIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         summary = json.loads(completed.stdout)
-        self.assertEqual(summary["details"]["to_version"], "1.1.3")
+        self.assertEqual(summary["details"]["to_source_id"], PackageLayout.resolve(incoming_root).source_id)
         self.assertTrue(summary["applied"])
 
 

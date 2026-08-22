@@ -18,15 +18,17 @@ This guide is organized into five parts:
 
 ### First-time bootstrap
 
-Open Codex from the project directory and send this prompt:
+Open Codex from the project directory and send this prompt after checking out
+this repository:
 
 ```text
-Download and extract the latest `codex_workflow-<version>.zip` asset (not GitHub's Source code archive) from https://github.com/iamnomankazi/codex_workflow_custom/releases. Verify it against `SHA256SUMS`, then read the bundled `codex_workflow/bootstrap.md` and follow it exactly.
+Read the checked-out `codex_workflow/bootstrap.md` and follow its local-source
+validation and bootstrap procedure. Do not download a release archive.
 ```
 
-The release package is a universal ZIP for Linux, macOS, and Windows. Its
-installation guide invokes the bundled lifecycle CLI, which owns validation,
-rendering, backups, project initialization, and rollback. After the first
+The source package is portable across Linux, macOS, and Windows. Its
+installation guide invokes the lifecycle CLI, which owns validation, rendering,
+backups, project initialization, and rollback. After the first
 installation, start a new Codex session so the newly installed user
 instructions are loaded. Python 3.11 or newer is required.
 
@@ -110,27 +112,31 @@ entry points stop with an actionable error.
 
 #### `codex_workflow --update`
 
-Update the installed workflow and the recognized current project from a GitHub
-Release asset. The command queries the GitHub Releases API, selects the latest
-eligible semantic-versioned release with the matching ZIP and checksum,
-downloads the asset, verifies it, and extracts it into a temporary directory.
-It never clones or pulls the repository.
+Update the installed workflow and the recognized current project from a
+deliberate local package directory. External release lookup and downloads are
+disabled. The internal source form is:
+
+```text
+python3 <Codex home>/codex_workflow/workflow.py update \
+  --source <repository>/codex_workflow --project <project>
+```
+
+Running `codex_workflow --update` without a local source fails closed and makes
+no network request.
 
 The update migrates and preserves the installed workflow configuration and
 regenerates distributed worker TOMLs from the incoming package. It preserves
 project personalization, project-local instructions, project documents,
-unrelated Codex settings, source backups, the automatic-check preference, and
-the project's enabled or disabled state. Projects on older workflow versions
-are validated against their matching historical source backups. It stops on
+unrelated Codex settings, and source backups; the legacy automatic-check field
+is forced disabled, and
+the project's enabled or disabled state. Projects from an earlier local source
+identity are validated against their matching historical source backups. It stops on
 marker drift, unavailable historical source, or legacy edits requiring a
 one-time reviewed migration.
 
-#### `codex_workflow --check-update`
-
-Run an explicit read-only release check. It always queries the available
-installable releases, regardless of the automatic-check setting, and reports
-every version newer than the installed one with a compact summary of each
-release's notes. It does not download or change files.
+The retired `--check-update`, `--auto-check-update`, and automatic-update
+commands remain only as hidden compatibility shims. They report that external
+release updates are disabled and perform no network or update mutation.
 
 #### `codex_workflow --remove`
 
@@ -141,22 +147,6 @@ point, project workflow resource, user-managed workflow region, workflow-owned
 Codex settings and workers, and the complete installed runtime including
 backups. It preserves `agent_docs/` and unrelated user-level content. A
 non-affirmative response performs no changes.
-
-#### Automatic update check
-
-The package default is disabled: `<Codex home>/AGENTS.md` contains no session-start
-check instruction, so new sessions make no automatic update-check call.
-
-Send `codex_workflow --enable_auto_check_update` to explicitly enable the
-session-start check. It updates the installed configuration and adds an
-instruction that runs the read-only `auto-check-update` command once per new
-session. When enabled, the command compares the installed version with the
-highest usable GitHub Release and reports an available update; it stays quiet
-when current. `codex_workflow --disable_auto_check_update` disables the setting
-and removes that instruction. Both commands preserve unrelated user-level
-content.
-The former `--enable_auto_update` and `--disable_auto_update` prompts remain
-compatibility aliases; no command automatically installs an update.
 
 #### `codex_workflow --disable`
 
@@ -211,9 +201,9 @@ bounded tasks use the direct worker-free path and emit no table.
 
 ## Part 2 — Installed-file map
 
-The release ZIP contains only one top-level directory, `codex_workflow/`. It
-does not contain the repository README, README images, development documents,
-`.git/`, release scripts, or other repository-only files. `~/.codex` below is
+The checked-out source uses one top-level directory, `codex_workflow/`, for the
+materialized runtime. The repository README, development documents, `.git/`,
+and other repository-only files are not installed. `~/.codex` below is
 the default Codex home only: a non-empty `CODEX_HOME` environment variable
 overrides it, and `~/.codex` is used only when `CODEX_HOME` is unset. On
 Windows, `~/.codex` means the current user's profile directory and the
@@ -237,13 +227,12 @@ and the current project as follows:
 │   ├── explorer.toml
 │   └── end_of_session.toml
 └── codex_workflow/
-    ├── VERSION                             # installed workflow version
-    ├── user_AGENTS.md                      # managed commands and optional-check placeholder
+    ├── VERSION                             # legacy migration marker (not active identity)
+    ├── user_AGENTS.md                      # managed command prompts
     ├── workflow_config.json                # persistent workflow configuration
     ├── workflow.py                         # validated lifecycle CLI
-    ├── runtime/                            # validation, rendering, release, and transaction modules
+    ├── runtime/                            # validation, rendering, and transaction modules
     ├── resources/                          # immutable package defaults
-    │   ├── auto_check_update.md
     │   ├── personalization.md
     │   └── workflow_config.default.json
     ├── install_state.json                  # workflow ownership and installed-state manifest
@@ -253,13 +242,8 @@ and the current project as follows:
     ├── end_of_session.md                   # shared handoff spawn contract
     ├── bootstrap.md                        # initial user/project bootstrap procedure
     ├── install.md                          # project-only installation procedure
-    ├── update.md                           # Release-based update procedure
-    ├── check_update.md                     # explicit read-only release check
+    ├── update.md                           # local-source update procedure
     ├── remove.md                            # two-phase removal procedure
-    ├── enable_auto_check_update.md         # enable automatic session check
-    ├── disable_auto_check_update.md        # disable automatic session check
-    ├── enable_auto_update.md               # legacy enable alias
-    ├── disable_auto_update.md              # legacy disable alias
     ├── configuration_guide.md               # --configure procedure
     ├── personalization_guide.md            # --personal procedure
     ├── disable.md                          # --disable procedure
@@ -268,8 +252,8 @@ and the current project as follows:
     │   ├── AGENTS.md                       # project entry-point template
     │   ├── agents/*.toml                    # all distributed worker templates
     │   └── project_docs/*.md                # six Project Documentation templates
-    ├── .source_backup/<version>/            # complete installed release source backup
-    └── .backups/<old-version>-<timestamp>/ # update backups, created when needed
+    ├── .source_backup/<source-id>/          # complete installed local source backup
+    └── .backups/<source-id>-<timestamp>/    # update backups, created when needed
 
 <project>/
 ├── AGENTS.md                               # active project workflow entry point
@@ -363,14 +347,16 @@ The configuration contract is:
 2. set `default_executor` to `executor_luna` or `executor_terra` and keep it
    inside `enabled_workers`;
 3. set `default_executor_reasoning_effort` to `high`, `xhigh`, or `max`;
-4. keep `auto_check_update` boolean; it defaults to `false`;
-5. keep `doc-writer` enabled because project installation depends on it and
+4. keep `doc-writer` enabled because project installation depends on it and
    keep `end_of_session` enabled because both deployment routes require it;
-6. keep worker names unique and backed by templates in
+5. keep worker names unique and backed by templates in
    `<Codex home>/codex_workflow/templates/agents/`;
-7. keep exactly one of `executor_luna` and `executor_terra` enabled as the
+6. keep exactly one of `executor_luna` and `executor_terra` enabled as the
    default executor;
-8. keep `max_executor_sol_instances` between zero and the concurrency limit.
+7. keep `max_executor_sol_instances` between zero and the concurrency limit.
+
+The legacy `auto_check_update` field is accepted only for configuration
+migration and is always materialized as `false`; no command enables it.
 
 Do not edit generated surfaces directly. `codex_workflow --configure`
 synchronizes the Heavy snapshot, all worker TOMLs, and workflow-owned
@@ -698,7 +684,7 @@ The resource currently contains:
 
 1. `default_executor`: currently `executor_luna`;
 2. `default_executor_reasoning_effort`: currently `xhigh`;
-3. `auto_check_update`: currently `false`;
+3. legacy `auto_check_update`: always `false`;
 4. `max_concurrent_workers`: currently `20`;
 5. `max_executor_sol_instances`: currently `1`;
 6. `enabled_workers`: currently `executor_luna`, `executor_pro`, `reviewer_pro`,
@@ -744,27 +730,22 @@ in `AGENTS.md` or in the hidden disabled entry point. It is not stored in
 
 Location: `<Codex home>/codex_workflow/`
 
-- `user_AGENTS.md` contains the workflow marker, installed version marker,
-  optional-check placeholder, and exact command prompts for
-  `--install`, `--update`, `--remove`, `--enable_auto_check_update`,
-  `--disable_auto_check_update`, `--configure`, `--personal`, `--disable`, and
-  `--enable`, plus the former automatic-check naming aliases.
+- `user_AGENTS.md` contains the workflow marker, installed version marker, and
+  exact command prompts for `--install`, `--update`, `--remove`, `--configure`,
+  `--personal`, `--disable`, and `--enable`.
 - `bootstrap.md`, `install.md`, `configuration_guide.md`, and
   `personalization_guide.md` describe initial bootstrap, project installation,
   configuration, and personalization.
 - `update.md`, `disable.md`, and `enable.md` describe update and activation
   lifecycle operations.
 - `remove.md` describes the destructive two-phase removal procedure.
-- `enable_auto_check_update.md` and `disable_auto_check_update.md` describe the
-  explicit update-check controls; `resources/auto_check_update.md` supplies the
-  optional session instruction. `enable_auto_update.md` and
-  `disable_auto_update.md` retain the former names as compatibility aliases.
 - `workflow.py` and `runtime/` implement validated lifecycle operations.
-- `VERSION` identifies the installed workflow version.
+- `VERSION` is retained only as a legacy migration marker; new state uses a
+  deterministic `sha256-...` source identity and does not require a version bump.
 - `templates/` stores the project entry-point, worker, and project-document
   templates used for installation and update.
-- `.source_backup/` keeps a complete release source copy for repair and
-  recovery; update-time `.backups/` preserve replaced installed state.
+- `.source_backup/` keeps a complete local source copy keyed by source identity
+  for repair and recovery; update-time `.backups/` preserve replaced installed state.
 
 This block is the command and lifecycle control plane. Guides define intent and
 the runtime performs deterministic mutations. It is not project context or the

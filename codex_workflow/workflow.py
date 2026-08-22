@@ -19,7 +19,6 @@ from pathlib import Path
 if sys.version_info < (3, 11):
     raise SystemExit("codex_workflow requires Python 3.11 or newer")
 
-from runtime.config import load_config
 from runtime.errors import WorkflowError
 from runtime.layout import PROJECT_ID
 from runtime.lifecycle import (
@@ -28,7 +27,6 @@ from runtime.lifecycle import (
     ProjectPaths,
     RuntimePaths,
     plan_bootstrap,
-    plan_auto_check_update_setting,
     plan_configure,
     plan_enable,
     plan_personalize,
@@ -36,12 +34,20 @@ from runtime.lifecycle import (
     plan_remove,
     plan_update,
 )
-from runtime.release import (
-    acquire,
-    parse_semver,
-    select_latest,
-    select_releases,
-    summarize_release_notes,
+
+RETIRED_EXTERNAL_UPDATE_COMMANDS = frozenset(
+    {
+        "auto-check-update",
+        "check-update",
+        "enable-auto-check-update",
+        "disable-auto-check-update",
+        "enable-auto-update",
+        "disable-auto-update",
+    }
+)
+EXTERNAL_UPDATE_DISABLED = (
+    "external release updates are disabled; no network request was made. "
+    "Use `update --source <local package root>` for a deliberate working-tree update."
 )
 
 
@@ -76,9 +82,16 @@ def parse_args() -> argparse.Namespace:
 
     update = commands.add_parser("update")
     _add_common(update)
-    # Internal hand-off from an installed launcher; not a public prompt form.
-    update.add_argument("--source", type=Path, help=argparse.SUPPRESS)
-    update.add_argument("--allow-downgrade", action="store_true")
+    # Deliberate local-source materialization. An installed launcher may also
+    # delegate here when the incoming source contains the newer CLI.
+    update.add_argument(
+        "--source",
+        type=Path,
+        help="local package root to materialize into the Codex home",
+    )
+    # Accepted as a no-op compatibility flag for older local launchers. Local
+    # source identities are not ordered, so there is no downgrade decision.
+    update.add_argument("--allow-downgrade", action="store_true", help=argparse.SUPPRESS)
     update.add_argument(
         "--legacy-local-instructions",
         type=Path,
@@ -89,23 +102,6 @@ def parse_args() -> argparse.Namespace:
     _add_common(remove)
     remove.add_argument("--confirm", action="store_true", help=argparse.SUPPRESS)
 
-    auto_check = commands.add_parser("auto-check-update")
-    _add_common(auto_check, project=False)
-
-    check_update = commands.add_parser("check-update")
-    _add_common(check_update, project=False)
-
-    for name in (
-        "enable-auto-check-update",
-        "disable-auto-check-update",
-        # Compatibility aliases retained from releases that called a
-        # notification-only check an automatic update.
-        "enable-auto-update",
-        "disable-auto-update",
-    ):
-        command = commands.add_parser(name)
-        _add_common(command, project=False)
-
     configure = commands.add_parser("configure")
     _add_common(configure, project=False)
     configure.add_argument("--default-executor", choices=["executor_luna", "executor_terra"])
@@ -113,12 +109,6 @@ def parse_args() -> argparse.Namespace:
     configure.add_argument("--max-workers", type=int)
     configure.add_argument("--max-sol", type=int)
     configure.add_argument("--report-size", type=int)
-    configure.add_argument(
-        "--auto-check-update",
-        choices=["enabled", "disabled"],
-        help=argparse.SUPPRESS,
-    )
-
     personalize = commands.add_parser("personalize")
     _add_common(personalize)
     personalize.add_argument("--resource", type=Path, required=True)
@@ -144,6 +134,16 @@ def _emit(value: dict[str, object], *, compact: bool) -> None:
         print(json.dumps(value, separators=(",", ":"), sort_keys=True))
     else:
         print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def _retired_external_update_command(argv: list[str]) -> int | None:
+    if len(argv) < 2 or argv[1] not in RETIRED_EXTERNAL_UPDATE_COMMANDS:
+        return None
+    _emit(
+        {"error": EXTERNAL_UPDATE_DISABLED, "applied": False},
+        compact="--json" in argv[2:],
+    )
+    return 1
 
 
 def _finish(plan: OperationPlan, args: argparse.Namespace) -> int:
@@ -176,8 +176,6 @@ def _delegate_update(incoming: PackageLayout, args: argparse.Namespace) -> int:
         "--project",
         str(args.project),
     ]
-    if args.allow_downgrade:
-        command.append("--allow-downgrade")
     if args.legacy_local_instructions:
         command.extend(
             ["--legacy-local-instructions", str(args.legacy_local_instructions)]
@@ -191,86 +189,23 @@ def _delegate_update(incoming: PackageLayout, args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    retired = _retired_external_update_command(sys.argv)
+    if retired is not None:
+        return retired
     args = parse_args()
     temporary = None
     try:
         runtime, project = _paths(args)
         if args.command == "validate":
             package = PackageLayout.resolve(args.package_root)
-            _emit(
-                {
-                    "valid": True,
-                    "version": package.version,
-                    "workers": sorted(package.worker_names),
-                },
-                compact=args.json,
-            )
-            return 0
-        if args.command == "auto-check-update":
-            config = load_config(
-                runtime.runtime / "workflow_config.json",
-                templates=runtime.runtime / "templates" / "agents",
-            )
-            if not config.auto_check_update:
-                _emit(
-                    {"status": "disabled", "installed": None, "available": None},
-                    compact=args.json,
-                )
-                return 0
-            installed_text = (runtime.runtime / "VERSION").read_text(encoding="utf-8").strip()
-            installed = parse_semver(installed_text)
-            selected = select_latest()
-            status = "current" if selected.version == installed else (
-                "update available" if selected.version > installed else "installed newer"
-            )
-            _emit(
-                {
-                    "status": status,
-                    "installed": installed_text,
-                    "available": selected.version_text,
-                    "asset": selected.zip_name,
-                },
-                compact=args.json,
-            )
-            return 0
-        if args.command == "check-update":
-            installed_text = (runtime.runtime / "VERSION").read_text(encoding="utf-8").strip()
-            installed = parse_semver(installed_text)
-            releases = select_releases()
-            newer = [release for release in releases if release.version > installed]
-            latest = releases[0]
-            updates = [
-                {
-                    "version": release.version_text,
-                    "asset": release.zip_name,
-                    "release_url": release.release_url,
-                    "release_notes": release.release_notes,
-                    "summary": summarize_release_notes(release.release_notes),
-                }
-                for release in newer
-            ]
-            if newer:
-                status = "update available"
-                summary = "\n".join(
-                    f"{item['version']}: {item['summary']}" for item in updates
-                )
-            elif latest.version == installed:
-                status = "current"
-                summary = "The installed workflow is current."
-            else:
-                status = "installed newer"
-                summary = "The installed workflow is newer than the latest release."
-            _emit(
-                {
-                    "status": status,
-                    "installed": installed_text,
-                    "available": latest.version_text,
-                    "asset": latest.zip_name,
-                    "summary": summary,
-                    "updates": updates,
-                },
-                compact=args.json,
-            )
+            result = {
+                "valid": True,
+                "source_id": package.source_id,
+                "workers": sorted(package.worker_names),
+            }
+            if package.legacy_version is not None:
+                result["legacy_version"] = package.legacy_version
+            _emit(result, compact=args.json)
             return 0
         if args.command == "remove":
             assert project is not None
@@ -282,22 +217,6 @@ def main() -> int:
                 _emit(summary, compact=args.json)
                 return 0
             return _finish(plan, args)
-        if args.command in {
-            "enable-auto-check-update",
-            "disable-auto-check-update",
-            "enable-auto-update",
-            "disable-auto-update",
-        }:
-            return _finish(
-                plan_auto_check_update_setting(
-                    runtime,
-                    enabled=args.command in {
-                        "enable-auto-check-update",
-                        "enable-auto-update",
-                    },
-                ),
-                args,
-            )
         if args.command == "bootstrap":
             assert project is not None
             package = PackageLayout.resolve(args.package_root)
@@ -306,7 +225,7 @@ def main() -> int:
             assert project is not None
             if project.active.exists() and project.disabled.exists():
                 raise WorkflowError("both active and disabled project entry points exist")
-            if (runtime.runtime / "VERSION").is_file():
+            if (runtime.runtime / "workflow.py").is_file():
                 package = PackageLayout.resolve(runtime.runtime)
             elif args.package_root is not None:
                 package = PackageLayout.resolve(args.package_root)
@@ -341,17 +260,14 @@ def main() -> int:
             return _finish(plan_project_install(package, project), args)
         if args.command == "update":
             assert project is not None
-            if args.source:
-                incoming = PackageLayout.resolve(args.source)
-            else:
-                selected = select_latest()
-                temporary, package_path = acquire(selected)
-                incoming = PackageLayout.resolve(package_path)
+            if not args.source:
+                raise WorkflowError(
+                    "external release updates are disabled; pass --source <local "
+                    "package root> to update from deliberate local source"
+                )
+            incoming = PackageLayout.resolve(args.source)
             if incoming.root != Path(__file__).resolve().parent:
                 return _delegate_update(incoming, args)
-            installed_text = (runtime.runtime / "VERSION").read_text(encoding="utf-8").strip()
-            if parse_semver(incoming.version) < parse_semver(installed_text) and not args.allow_downgrade:
-                raise WorkflowError("incoming version is older; pass --allow-downgrade after approval")
             legacy_local = (
                 args.legacy_local_instructions.read_text(encoding="utf-8")
                 if args.legacy_local_instructions
@@ -373,11 +289,6 @@ def main() -> int:
                 "max_concurrent_workers": args.max_workers,
                 "max_executor_sol_instances": args.max_sol,
                 "report_package_size": args.report_size,
-                "auto_check_update": (
-                    args.auto_check_update == "enabled"
-                    if args.auto_check_update is not None
-                    else None
-                ),
             }
             return _finish(plan_configure(runtime, changes), args)
         if args.command == "personalize":

@@ -55,7 +55,7 @@ def migrate_config_resource(
     if not isinstance(source_version, int) or not isinstance(target_version, int):
         raise ValidationError("configuration schema_version must be an integer")
     if source_version > target_version:
-        raise ValidationError("installed configuration schema is newer than this release")
+        raise ValidationError("installed configuration schema is newer than this runtime")
     migrated = dict(raw)
     while source_version < target_version:
         migration = CONFIG_MIGRATIONS.get(source_version)

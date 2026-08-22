@@ -3,8 +3,6 @@
 <!-- codex-workflow-user-managed-start -->
 # AGENTS.md
 
-<!-- codex-workflow-auto-check-update-instruction -->
-
 Resolve the Codex home before running anything below: use a non-empty
 `CODEX_HOME` environment variable when it is set; otherwise use `~/.codex`.
 Workflow resources and guides live under `<Codex home>/codex_workflow`.
@@ -19,23 +17,8 @@ exactly.
 - codex_workflow --update
   Guide:  <Codex home>/codex_workflow/update.md.
 
-- codex_workflow --check-update
-  Guide:  <Codex home>/codex_workflow/check_update.md.
-
 - codex_workflow --remove
   Guide: <Codex home>/codex_workflow/remove.md.
-
-- codex_workflow --enable_auto_check_update
-  Guide: <Codex home>/codex_workflow/enable_auto_check_update.md.
-
-- codex_workflow --disable_auto_check_update
-  Guide: <Codex home>/codex_workflow/disable_auto_check_update.md.
-
-- codex_workflow --enable_auto_update
-  Guide: <Codex home>/codex_workflow/enable_auto_update.md (legacy alias).
-
-- codex_workflow --disable_auto_update
-  Guide: <Codex home>/codex_workflow/disable_auto_update.md (legacy alias).
 
 - codex_workflow --configure
   Guide: <Codex home>/codex_workflow/configuration_guide.md.

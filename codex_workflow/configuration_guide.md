@@ -20,8 +20,8 @@ setting sequentially. Instead, display this complete selectable menu, showing
 the current value beside each setting and keeping **Exit** as the final option:
 
 The installed file is mutable state. Package defaults and migration fallbacks
-come from `<Codex home>/codex_workflow/resources/workflow_config.default.json` and
-must not be edited as user configuration.
+come from `<Codex home>/codex_workflow/resources/workflow_config.default.json`
+and must not be edited as user configuration.
 
 1. Default executor: `executor_luna` or `executor_terra`.
 2. Default-executor reasoning effort: `high`, `xhigh`, or `max`.
@@ -35,11 +35,9 @@ needed for a valid value, allow **Keep current**, and then return to the full
 menu with refreshed current values. Continue until the user selects **Exit**.
 If no setting changed, exit without running the lifecycle CLI.
 
-The automatic session-start update check is controlled explicitly by
-`codex_workflow --enable_auto_check_update` and
-`codex_workflow --disable_auto_check_update`; it is not part of this menu. Do
-not edit any live file directly. The former `--enable_auto_update` and
-`--disable_auto_update` forms remain compatibility aliases.
+External release updates and automatic upstream checks are disabled. They are
+not configuration options and must not be re-enabled by editing the legacy
+`auto_check_update` compatibility field.
 
 ## Plan and apply
 
@@ -59,7 +57,7 @@ Run it with `--json` after collecting the requested values. The command
 validates and applies the complete configuration in one operation.
 
 The script validates the configuration, keeps `doc-writer` and
-`end_of_session` enabled as required system roles, renders the Heavy snapshot,
+`end_of_session` enabled as required system roles, renders the Heavy route,
 synchronizes all distributed worker TOMLs, removes only obsolete manifest-owned
 workers, and patches only workflow-owned Codex settings. The configured maximum
 remains child-worker capacity; required Multi-Agent V2 total session capacity

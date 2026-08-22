@@ -166,7 +166,7 @@ def plan_project_install(package: PackageLayout, project: ProjectPaths) -> Opera
     project_state = {
         "schema_version": RUNTIME_SCHEMA_VERSION,
         "entry_format_version": ENTRY_FORMAT_VERSION,
-        "workflow_version": package.version,
+        "source_id": package.source_id,
         "enabled": enabled,
     }
     mutations.append(json_mutation(project.state, project_state))
@@ -311,7 +311,7 @@ def plan_project_update(
     state = {
         "schema_version": RUNTIME_SCHEMA_VERSION,
         "entry_format_version": ENTRY_FORMAT_VERSION,
-        "workflow_version": incoming.version,
+        "source_id": incoming.source_id,
         "enabled": not disabled_exists,
     }
     mutations.append(json_mutation(project.state, state))
