@@ -97,7 +97,7 @@ The current tested setup is:
 | Executor Pro | DeepSeek V4 Pro | Max | Serious or persistent repair |
 | End-of-Session | GPT-5.6 Luna | xhigh | Documentation reconciliation and Git-state handoff |
 
-Additional roles are available when there is a reason to use them:
+The source also includes the following alternate and specialist roles:
 
 | Role | Model | Effort | Use |
 | --- | --- | --- | --- |
@@ -106,7 +106,7 @@ Additional roles are available when there is a reason to use them:
 | Reviewer Pro | DeepSeek V4 Pro | Max | Independent read-only deep review |
 | Doc-writer | GPT-5.6 Luna | xhigh | Targeted durable documentation and installation-time project-doc initialization |
 
-These specialist roles are not automatic stages in every Heavy deployment.
+These roles are not automatic stages in every Heavy deployment.
 
 ---
 
@@ -309,10 +309,12 @@ The bootstrap currently requires the active OpenCodex runtime to be:
 2.21.0
 ```
 
-with effective `agentTaskRecovery` configuration equivalent to:
+with effective external configuration equivalent to:
 
 ```json
 {
+  "multiAgentMode": "v2",
+  "syncCodexSubagentDefaults": false,
   "agentTaskRecovery": {
     "enabled": true,
     "model": "gpt-5.6-sol",
@@ -322,9 +324,9 @@ with effective `agentTaskRecovery` configuration equivalent to:
 }
 ```
 
-This recovery path is required for the current DeepSeek V4 Flash/Pro Multi-Agent V2 workers.
+`multiAgentMode = "v2"` is required for the intended V2 worker behavior, `syncCodexSubagentDefaults = false` avoids incompatible default-subagent writes, and `agentTaskRecovery` is required for the current DeepSeek V4 Flash/Pro workers.
 
-The workflow does not install, modify, or update OpenCodex configuration itself. If the required runtime or recovery configuration cannot be verified, bootstrap stops.
+The workflow does not install, modify, or update OpenCodex configuration itself. If the required runtime or external configuration cannot be verified, bootstrap stops.
 
 ### First installation
 
@@ -504,11 +506,11 @@ Large diffs, logs, screenshots, diagnostics, and other detailed artifacts remain
 
 ## Benchmarks
 
-The repository currently contains the existing Light-route benchmark:
+The repository retains the legacy Light-route benchmark inherited from the upstream workflow:
 
 ![Light benchmark analysis](light_benchmark/analysis.png)
 
-It should be read as the result of the scenario it measured, not as a universal token-saving figure for every task or route.
+It predates the current custom Medium/Heavy architecture and should be read only as the result of the scenario it originally measured, not as a benchmark of the present workflow or a universal token-saving figure.
 
 Medium and Heavy have also been functionally validated, including Multi-Agent V2 role binding and the Heavy repair path. Functional acceptance, however, is different from an efficiency benchmark.
 
