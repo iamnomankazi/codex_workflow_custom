@@ -506,26 +506,9 @@ Large diffs, logs, screenshots, diagnostics, and other detailed artifacts remain
 
 ## Benchmarks
 
-The repository retains the legacy Light-route benchmark inherited from the upstream workflow:
+The current workflow has passed functional acceptance testing across Light, Medium, and Heavy routes, including Multi-Agent V2 role binding and the Heavy repair path.
 
-![Light benchmark analysis](light_benchmark/analysis.png)
-
-It predates the current custom Medium/Heavy architecture and should be read only as the result of the scenario it originally measured, not as a benchmark of the present workflow or a universal token-saving figure.
-
-Medium and Heavy have also been functionally validated, including Multi-Agent V2 role binding and the Heavy repair path. Functional acceptance, however, is different from an efficiency benchmark.
-
-Future measurements can compare:
-
-- direct Light work;
-- Medium with Explorer-assisted context discovery;
-- Heavy on work large enough to justify delegation;
-- Parent context growth;
-- worker usage;
-- elapsed time;
-- repair/rework;
-- final result quality.
-
-Until there is comparable data across those cases, the README does not claim a fixed percentage of savings.
+Controlled performance and token-efficiency benchmarks for the current architecture will be added separately. Until comparable measurements exist, this README does not claim a fixed percentage of token savings or performance improvement.
 
 ---
 
