@@ -1,5 +1,7 @@
 # Light Benchmark
 
+> Historical benchmark inherited from the upstream `viettran-edgeAI/codex_workflow` repository. It predates the current custom Medium/Heavy architecture and should not be treated as a benchmark of the present workflow.
+
 Codebase: https://github.com/viettran-edgeAI/Jetson-ocr-ai
 Benchmark prompt: [GitHub Gist](https://gist.github.com/viettran-edgeAI/f104e8c21c426eb441e082b4befc6c24)
 
