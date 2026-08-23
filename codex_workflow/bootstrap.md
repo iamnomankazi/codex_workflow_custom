@@ -8,10 +8,12 @@ use the equivalent `py -3.11` invocation and native paths.
 
 Before validating or installing the package, verify that the active OpenCodex
 runtime is the empirically tested version `2.21.0` and that its effective
-configuration already contains:
+external configuration already contains:
 
 ```json
 {
+  "multiAgentMode": "v2",
+  "syncCodexSubagentDefaults": false,
   "agentTaskRecovery": {
     "enabled": true,
     "model": "gpt-5.6-sol",
@@ -21,10 +23,12 @@ configuration already contains:
 }
 ```
 
-This recovery behavior is required for DeepSeek V4 Flash/Pro Multi-Agent V2
-tasks. The workflow does not own or modify OpenCodex configuration and must
+`multiAgentMode = "v2"` is required for the intended V2 worker behavior,
+`syncCodexSubagentDefaults = false` avoids incompatible default-subagent writes,
+and `agentTaskRecovery` is required for the current DeepSeek V4 Flash/Pro
+workers. The workflow does not own or modify OpenCodex configuration and must
 not update OpenCodex during installation. Stop before bootstrap and report
-the missing prerequisite if the active version or effective recovery
+the missing prerequisite if the active version or effective external
 configuration cannot be verified.
 
 The installed workflow keeps `max_concurrent_workers` as child-worker
