@@ -6,6 +6,10 @@ Small tasks stay with the main agent. Larger tasks can use a persistent read-onl
 
 More agents are useful only when the task benefits from them. The workflow keeps the direct path cheap and adds orchestration only when there is a clear reason to do so.
 
+## Workflow architecture
+
+![Codex Workflow architecture](docs/workflow_architecture.png)
+
 ---
 
 ## Workflow routes
@@ -77,6 +81,8 @@ Workers are not spawned simply because they are available.
 ---
 
 ## Model topology
+
+![Codex Workflow model and role topology](docs/model_topology.png)
 
 Worker models are defined by their installed role TOMLs. The Parent model belongs to the active Codex session rather than being hard-coded by this workflow.
 
