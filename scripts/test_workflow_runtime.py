@@ -261,7 +261,7 @@ class MarkerTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         recovery_contract = "\n".join((bootstrap, update, usage, readme))
         for required_recovery_value in (
-            "2.49.0",
+            "2.50.0",
             "agentTaskRecovery",
             "gpt-5.6-sol",
             "45000",

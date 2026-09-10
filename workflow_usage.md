@@ -313,7 +313,7 @@ configuration, using the incoming package default only for newly introduced
 fields. The project entry point's enabled/disabled state is preserved
 separately.
 
-Multi-Agent V2 depends on the empirically tested OpenCodex `2.49.0` baseline.
+Multi-Agent V2 depends on the empirically tested OpenCodex `2.50.0` baseline.
 Its effective external configuration must already provide `multiAgentMode` =
 `"v2"`, `syncCodexSubagentDefaults` = `false`, and `agentTaskRecovery` with
 `enabled: true`, model `gpt-5.6-sol`, `timeoutMs` set to `45000`, and

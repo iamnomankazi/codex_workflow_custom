@@ -317,7 +317,7 @@ The current Heavy setup also depends on Multi-Agent V2 and the tested OpenCodex 
 The empirically tested OpenCodex baseline is:
 
 ```text
-2.49.0
+2.50.0
 ```
 
 with effective external configuration equivalent to:
