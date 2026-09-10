@@ -1,0 +1,75 @@
+name: V4.1 candidate validation
+
+on:
+  push:
+    branches:
+      - astra-low-v41-heavy
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out candidate branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify candidate model bindings and Astra overlay
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          root = Path('.')
+          expected = {
+              'explorer': ('deepseek/deepseek-flash', 'max'),
+              'executor_pro': ('deepseek/deepseek-flash', 'max'),
+              'reviewer_pro': ('deepseek/deepseek-flash', 'max'),
+          }
+          for role, (model, effort) in expected.items():
+              data = tomllib.loads((root / 'codex_workflow' / 'agents' / f'{role}.toml').read_text())
+              assert data['model'] == model, (role, data['model'])
+              assert data['model_reasoning_effort'] == effort, (role, data['model_reasoning_effort'])
+
+          heavy = (root / 'codex_workflow' / 'heavy_route.md').read_text()
+          required = [
+              'Astra parent efficiency overlay',
+              'typically 2–3',
+              'Astra owns worker topology',
+              'Do not poll workers at fixed short intervals',
+              'Give Tester the changed surfaces',
+              'Do not add Sol or additional Astra sessions merely for another opinion',
+          ]
+          for phrase in required:
+              assert phrase in heavy, phrase
+          PY
+
+      - name: Run package validation
+        run: python -B codex_workflow/workflow.py validate --package-root codex_workflow --json
+
+      - name: Run regression suite with candidate model expectations
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/test_workflow_runtime.py')
+          text = p.read_text()
+          text = text.replace(
+              'workers["explorer"]["model"], "deepseek/deepseek-v4-flash"',
+              'workers["explorer"]["model"], "deepseek/deepseek-flash"',
+          )
+          text = text.replace(
+              'self.assertEqual(workers[role]["model"], "deepseek/deepseek-v4-pro")',
+              'self.assertEqual(workers[role]["model"], "deepseek/deepseek-flash")',
+          )
+          p.write_text(text)
+          PY
+          python -B scripts/test_workflow_runtime.py -v
