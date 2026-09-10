@@ -108,6 +108,8 @@ The source also includes the following alternate and specialist roles:
 
 These roles are not automatic stages in every Heavy deployment.
 
+GPT-6 Astra Low is an optional Heavy parent under evaluation rather than a hard-coded workflow default. When Astra is the active parent, Heavy additionally loads `codex_workflow/astra_orchestration.md` to apply the quota- and context-efficiency policy derived from the current Astra trials.
+
 ---
 
 ## Heavy repair path

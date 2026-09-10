@@ -133,6 +133,17 @@ class MarkerTests(unittest.TestCase):
         self.assertIn("before the final response", heavy)
         self.assertIn("automatic handoff context fork", heavy)
         self.assertNotIn("compact ledger", heavy)
+        self.assertIn("astra_orchestration.md", heavy)
+        astra_policy = (PACKAGE / "astra_orchestration.md").read_text(encoding="utf-8")
+        for required_astra_policy in (
+            "Do not poll workers at fixed short intervals",
+            "typically 2–3",
+            "Astra owns worker topology",
+            "must not create subagents unless Astra has authorized",
+            "Give Tester the changed surfaces",
+            "Do not add Sol or additional Astra sessions merely for another opinion",
+        ):
+            self.assertIn(required_astra_policy, astra_policy)
         heavy_contract = " ".join(heavy.split())
         self.assertIn("same Luna worker for repair #1", heavy_contract)
         self.assertIn("same Luna worker for repair #2", heavy_contract)
