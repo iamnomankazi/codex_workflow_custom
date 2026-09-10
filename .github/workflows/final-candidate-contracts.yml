@@ -1,0 +1,75 @@
+name: Final candidate contract validation
+
+on:
+  push:
+    branches:
+      - astra-low-v41-heavy
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: astra-low-v41-heavy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Persist Astra contract coverage and docs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one anchor, found {count}: {old!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          replace_once(
+              'scripts/test_workflow_runtime.py',
+              '        self.assertNotIn("compact ledger", heavy)\n        heavy_contract = " ".join(heavy.split())\n',
+              '        self.assertNotIn("compact ledger", heavy)\n'
+              '        self.assertIn("astra_orchestration.md", heavy)\n'
+              '        astra_policy = (PACKAGE / "astra_orchestration.md").read_text(encoding="utf-8")\n'
+              '        for required_astra_policy in (\n'
+              '            "Do not poll workers at fixed short intervals",\n'
+              '            "typically 2–3",\n'
+              '            "Astra owns worker topology",\n'
+              '            "must not create subagents unless Astra has authorized",\n'
+              '            "Give Tester the changed surfaces",\n'
+              '            "Do not add Sol or additional Astra sessions merely for another opinion",\n'
+              '        ):\n'
+              '            self.assertIn(required_astra_policy, astra_policy)\n'
+              '        heavy_contract = " ".join(heavy.split())\n'
+          )
+
+          replace_once(
+              'README.md',
+              'These roles are not automatic stages in every Heavy deployment.\n\n---\n',
+              'These roles are not automatic stages in every Heavy deployment.\n\n'
+              'GPT-6 Astra Low is an optional Heavy parent under evaluation rather than a hard-coded workflow default. When Astra is the active parent, Heavy additionally loads `codex_workflow/astra_orchestration.md` to apply the quota- and context-efficiency policy derived from the current Astra trials.\n\n---\n'
+          )
+          PY
+
+      - name: Validate package
+        run: python -B codex_workflow/workflow.py validate --package-root codex_workflow --json
+
+      - name: Run full regression suite
+        run: python -B scripts/test_workflow_runtime.py -v
+
+      - name: Commit validated contract changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/test_workflow_runtime.py README.md
+          git commit -m "test(workflow): pin Astra Heavy policy contract"
+          git push origin HEAD:astra-low-v41-heavy
