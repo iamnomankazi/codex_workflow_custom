@@ -23,12 +23,15 @@ is performed. Running `update` without `--source` fails closed with an
 instruction to provide a local package root.
 
 Before applying an update that enables Multi-Agent V2, verify the active
-OpenCodex runtime remains at the tested version `2.21.0` and its effective
+OpenCodex runtime remains at the empirically tested baseline `2.49.0` and its effective
 external configuration still provides `multiAgentMode = "v2"`,
 `syncCodexSubagentDefaults = false`, and `agentTaskRecovery` enabled using model
 `gpt-5.6-sol`, `timeoutMs` `45000`, and `cacheEntries` `200`. Stop if any part of
-that prerequisite is absent. The workflow does not own or modify OpenCodex
-configuration and does not update OpenCodex.
+that prerequisite is absent. Newer versions are acceptable only after confirming
+Multi-Agent V2, `syncCodexSubagentDefaults = false`, enabled `agentTaskRecovery`,
+model discovery for `deepseek/deepseek-flash`, and a real DeepSeek tool-loop
+compatibility check. The workflow does not own or modify OpenCodex configuration
+and does not update OpenCodex.
 
 During materialization, `max_concurrent_workers` remains the child-worker
 limit and V2 total session capacity is written as that value plus one under

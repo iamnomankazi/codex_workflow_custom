@@ -84,7 +84,13 @@ Workers are not spawned simply because they are available.
 
 ![Codex Workflow model and role topology](docs/model_topology.png)
 
-Worker models are defined by their installed role TOMLs. The Parent model belongs to the active Codex session rather than being hard-coded by this workflow.
+Worker models are defined by their installed role TOMLs. For ChatGPT/Codexless
+Heavy launches, the caller selects the parent before the turn starts: plain
+Heavy explicitly uses `gpt-5.6-sol` with `high` effort, never a catalog default.
+GPT-6 Astra is opt-in only at exactly the user-requested supported effort. A
+parent cannot change its own already-running model. Immediately after start,
+the caller verifies requested versus resolved model and effort; any mismatch
+stops before worker spawning.
 
 The current tested setup is:
 
@@ -108,7 +114,10 @@ The source also includes the following alternate and specialist roles:
 
 These roles are not automatic stages in every Heavy deployment.
 
-GPT-6 Astra Low is an optional Heavy parent under evaluation rather than a hard-coded workflow default. When Astra is the active parent, Heavy additionally loads `codex_workflow/astra_orchestration.md` to apply the quota- and context-efficiency policy derived from the current Astra trials.
+GPT-6 Astra is an optional Heavy parent, never a hard-coded default. When Astra
+is selected at the user-requested supported effort, Heavy additionally loads
+`codex_workflow/astra_orchestration.md` to apply the quota- and
+context-efficiency policy derived from the current Astra trials.
 
 ---
 
@@ -305,10 +314,10 @@ The lifecycle runtime requires **Python 3.11 or newer**.
 
 The current Heavy setup also depends on Multi-Agent V2 and the tested OpenCodex environment.
 
-The bootstrap currently requires the active OpenCodex runtime to be:
+The empirically tested OpenCodex baseline is:
 
 ```text
-2.21.0
+2.49.0
 ```
 
 with effective external configuration equivalent to:
@@ -326,7 +335,13 @@ with effective external configuration equivalent to:
 }
 ```
 
-`multiAgentMode = "v2"` is required for the intended V2 worker behavior, `syncCodexSubagentDefaults = false` avoids incompatible default-subagent writes, and `agentTaskRecovery` is required for the current DeepSeek V4.1 Flash workers.
+Newer OpenCodex versions are acceptable only after confirming Multi-Agent V2,
+`syncCodexSubagentDefaults = false`, enabled `agentTaskRecovery`, model
+discovery for `deepseek/deepseek-flash`, and a real DeepSeek tool-loop
+compatibility check. `multiAgentMode = "v2"` is required for the intended V2
+worker behavior, `syncCodexSubagentDefaults = false` avoids incompatible
+default-subagent writes, and `agentTaskRecovery` is required for the current
+DeepSeek V4.1 Flash workers.
 
 The workflow does not install, modify, or update OpenCodex configuration itself. If the required runtime or external configuration cannot be verified, bootstrap stops.
 

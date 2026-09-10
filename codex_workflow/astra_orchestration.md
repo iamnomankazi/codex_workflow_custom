@@ -4,6 +4,12 @@ Use this policy only when the active Heavy parent is GPT-6 Astra. It is an Astra
 
 Keep Astra on high-value orchestration and treat OpenAI parent quota as scarce. Delegate repository-scale exploration, bounded implementation, routine testing, serious repair, and deep review to the configured specialists instead of duplicating their work in the parent.
 
+Before delegation, prefer direct Astra completion when the task is tightly
+coupled, reasonably parent-sized, or delegation mainly adds coordination or
+context overhead. Delegate only for a concrete benefit: separable
+implementation, long-context exploration, independent verification, or a
+specialist capability.
+
 - After delegation, wait for lifecycle or completion events. Do not poll workers at fixed short intervals or repeatedly reread large parent context merely to observe progress. If a true blocking wait is unavailable, use the sparsest practical checks.
 - Keep worker packets and upward reports compact. Retain only decision-relevant state in the parent; keep raw logs, large diffs, and repeated status summaries with the responsible worker unless they are needed to resolve a concrete failure or decision.
 - For substantial implementation that cleanly separates by module, feature, or ownership boundary, prefer a small number of bounded direct executors, typically 2–3, over one monolithic long-running executor. Do not split tightly coupled work merely to create parallelism.

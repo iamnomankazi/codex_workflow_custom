@@ -14,6 +14,16 @@ Use after Heavy is selected under `AGENTS.md`.
 Create only enabled workers and obey these limits.
 <!-- codex-workflow-effective-config-end -->
 
+## Heavy launch boundary
+
+For ChatGPT/Codexless Heavy launches, the caller selects the parent before the
+turn starts. Plain Heavy explicitly uses `gpt-5.6-sol` with `high` effort;
+never rely on a catalog default. GPT-6 Astra is opt-in only at exactly the
+user-requested supported effort. A parent cannot change its own already-running
+model. Immediately after start, the caller verifies requested versus resolved
+model and effort; any mismatch stops before worker spawning. Worker role TOMLs
+remain the separate authority for child models.
+
 ## Role-aware spawning (mandatory)
 
 Every initial `spawn_agent` call must pass both the installed `agent_type` and a stable `task_name`; a task name alone is invalid role binding.

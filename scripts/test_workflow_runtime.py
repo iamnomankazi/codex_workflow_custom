@@ -261,13 +261,30 @@ class MarkerTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         recovery_contract = "\n".join((bootstrap, update, usage, readme))
         for required_recovery_value in (
-            "2.21.0",
+            "2.49.0",
             "agentTaskRecovery",
             "gpt-5.6-sol",
             "45000",
             "200",
+            "deepseek/deepseek-flash",
+            "DeepSeek tool-loop compatibility check",
         ):
             self.assertIn(required_recovery_value, recovery_contract)
+        self.assertNotIn("2.21.0", recovery_contract)
+        self.assertIn("Newer versions are acceptable only after confirming", recovery_contract)
+        launch_contract = " ".join("\n".join((agents_policy, heavy, usage, readme)).split())
+        for required_launch_rule in (
+            "caller selects the parent before the turn starts",
+            "`gpt-5.6-sol` with `high` effort",
+            "never rely on a catalog default",
+            "A parent cannot change its own already-running model",
+            "requested versus resolved model and effort",
+            "mismatch stops before worker spawning",
+            "Worker role TOMLs remain the separate authority for child models",
+        ):
+            self.assertIn(required_launch_rule, launch_contract)
+        self.assertIn("prefer direct Astra completion", astra_policy)
+        self.assertIn("Delegate only for a concrete benefit", astra_policy)
         bootstrap_contract = " ".join(bootstrap.split())
         update_contract = " ".join(update.split())
         self.assertIn("Stop before bootstrap", bootstrap_contract)

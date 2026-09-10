@@ -180,6 +180,14 @@ There are three execution routes:
 - **Heavy route** — the main agent orchestrates enabled worker subagents for
   larger deployment-state tasks.
 
+For ChatGPT/Codexless Heavy launches, the caller selects the parent before the
+turn starts. Plain Heavy explicitly uses `gpt-5.6-sol` with `high` effort,
+never a catalog default. GPT-6 Astra is opt-in only at exactly the
+user-requested supported effort. A parent cannot change its own already-running
+model. Immediately after start, the caller verifies requested versus resolved
+model and effort; any mismatch stops before worker spawning. Worker role TOMLs
+remain the separate authority for child models.
+
 For ordinary questions and small tasks, no route command is needed. To select
 a route for a task or plan, include one of these instructions in the prompt:
 
@@ -305,7 +313,7 @@ configuration, using the incoming package default only for newly introduced
 fields. The project entry point's enabled/disabled state is preserved
 separately.
 
-Multi-Agent V2 depends on the empirically tested OpenCodex `2.21.0` runtime.
+Multi-Agent V2 depends on the empirically tested OpenCodex `2.49.0` baseline.
 Its effective external configuration must already provide `multiAgentMode` =
 `"v2"`, `syncCodexSubagentDefaults` = `false`, and `agentTaskRecovery` with
 `enabled: true`, model `gpt-5.6-sol`, `timeoutMs` set to `45000`, and
@@ -314,7 +322,10 @@ behavior; `syncCodexSubagentDefaults = false` avoids incompatible
 default-subagent writes; recovery is required because DeepSeek workers cannot
 directly consume encrypted V2 task content. The workflow validates this as an
 installation and update prerequisite in its operator instructions; it does not
-own, patch, or update OpenCodex configuration.
+own, patch, or update OpenCodex configuration. Newer versions are acceptable
+only after confirming Multi-Agent V2, `syncCodexSubagentDefaults = false`,
+enabled `agentTaskRecovery`, model discovery for `deepseek/deepseek-flash`, and
+a real DeepSeek tool-loop compatibility check.
 
 The current default snapshot is:
 

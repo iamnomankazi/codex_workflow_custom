@@ -65,6 +65,16 @@ infer Medium or Heavy. Light implies `leaf state`; Medium and Heavy imply
 `leaf state`. Keep the selected route until the user changes it or the session
 ends.
 
+## Heavy launch boundary
+
+For ChatGPT/Codexless Heavy launches, the caller selects the parent before the
+turn starts. Plain Heavy explicitly uses `gpt-5.6-sol` with `high` effort;
+never rely on a catalog default. GPT-6 Astra is opt-in only at exactly the
+user-requested supported effort. A parent cannot change its own already-running
+model. Immediately after start, the caller verifies requested versus resolved
+model and effort; any mismatch stops before worker spawning. Worker role TOMLs
+remain the separate authority for child models.
+
 ## Context Loading
 
 - In Light, inspect only material needed for the current task.
