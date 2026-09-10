@@ -221,4 +221,4 @@ that completes, pauses, or blocks the deployment, follow
 unique deployment ID, and closure state; the automatic handoff context fork
 supplies the main-agent history. Wait and relay the fresh worker's report
 without duplicating its work; a later substantive deployment gets a new ID and
-handoff. The direct fast path calls no worker and emits no statistics table.
+handoff. The direct fast path calls no worker and emits no statistics.
