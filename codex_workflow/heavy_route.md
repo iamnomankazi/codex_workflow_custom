@@ -49,6 +49,19 @@ Questions and small or odd bounded tasks use a direct main-agent fast path: do
 not spawn, message, or otherwise call subagents and do not create work merely
 to use a worker. This fast path also skips End-of-Session and worker statistics.
 
+## Astra parent efficiency overlay
+
+When the active Heavy parent is GPT-6 Astra, keep Astra on high-value orchestration and treat OpenAI parent quota as scarce. Delegate repository-scale exploration, bounded implementation, routine testing, serious repair, and deep review to the configured specialists instead of duplicating their work in the parent.
+
+- After delegation, wait for lifecycle/completion events. Do not poll workers at fixed short intervals or repeatedly reread large parent context merely to observe progress. If true blocking wait is unavailable, use the sparsest practical checks.
+- Keep worker packets and upward reports compact. Retain only decision-relevant state in the parent; do not accumulate raw logs, large diffs, or repeated status summaries unless needed to resolve a concrete failure.
+- For substantial implementation that cleanly separates by module, feature, or ownership boundary, prefer a small number of bounded direct executors, typically 2–3, over one monolithic long-running executor. Do not split tightly coupled work merely to create parallelism.
+- Astra owns worker topology. Workers must not recursively create subagents unless Astra explicitly authorizes that delegation for a concrete reason. If a package materially expands beyond its authority, return the dependency or scope expansion to Astra instead of silently absorbing it.
+- Optimize for bounded worker context and useful parallelism, not minimum worker count and not maximum fan-out. Do not spawn redundant workers merely for reassurance.
+- Give Tester the changed surfaces, acceptance criteria, required checks, and identified risks. Start with proportionate verification and broaden only for concrete risk, failure, cross-cutting impact, or an explicit acceptance requirement.
+- Do not add Sol or additional Astra sessions merely for another opinion. Use configured DeepSeek/Luna specialists first and escalate expensive OpenAI reasoning only when it materially changes an architectural, integration, or acceptance decision.
+- Bias toward completion on routine ambiguity; ask only when ambiguity materially changes product behavior, authority, security, destructive side effects, or a consequential architecture decision.
+
 ## Planning and Context Gateway
 
 Initialize Explorer as required by `<Codex home>/codex_workflow/explorer_companion.md`. Before allocating
@@ -220,4 +233,4 @@ that completes, pauses, or blocks the deployment, follow
 unique deployment ID, and closure state; the automatic handoff context fork
 supplies the main-agent history. Wait and relay the fresh worker's report
 without duplicating its work; a later substantive deployment gets a new ID and
-handoff. The direct fast path calls no worker and emits no statistics.
+handoff. The direct fast path calls no worker and emits no statistics table.
