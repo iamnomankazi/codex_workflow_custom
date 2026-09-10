@@ -2,7 +2,7 @@
 name = "executor_pro"
 description = "Difficult diagnosis and repair executor for explicitly assigned bounded production work."
 
-model = "deepseek/deepseek-v4-pro"
+model = "deepseek/deepseek-flash"
 model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 

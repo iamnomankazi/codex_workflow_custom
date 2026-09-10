@@ -87,6 +87,7 @@ class PackageLayout:
                 "workflow.py",
                 "resources/workflow_config.default.json",
                 "heavy_route.md",
+                "astra_orchestration.md",
                 "medium_route.md",
                 "explorer_companion.md",
                 "end_of_session.md",

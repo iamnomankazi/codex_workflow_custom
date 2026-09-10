@@ -2,7 +2,7 @@
 name = "reviewer_pro"
 description = "Independent read-only reviewer for explicitly assigned difficult implementation and contract analysis."
 
-model = "deepseek/deepseek-v4-pro"
+model = "deepseek/deepseek-flash"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 

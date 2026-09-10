@@ -25,7 +25,7 @@ external configuration already contains:
 
 `multiAgentMode = "v2"` is required for the intended V2 worker behavior,
 `syncCodexSubagentDefaults = false` avoids incompatible default-subagent writes,
-and `agentTaskRecovery` is required for the current DeepSeek V4 Flash/Pro
+and `agentTaskRecovery` is required for the current DeepSeek V4.1 Flash
 workers. The workflow does not own or modify OpenCodex configuration and must
 not update OpenCodex during installation. Stop before bootstrap and report
 the missing prerequisite if the active version or effective external
