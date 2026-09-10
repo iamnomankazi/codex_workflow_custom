@@ -4,10 +4,9 @@ on:
   push:
     branches:
       - astra-low-v41-heavy
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -15,61 +14,142 @@ jobs:
     steps:
       - name: Check out candidate branch
         uses: actions/checkout@v4
+        with:
+          ref: astra-low-v41-heavy
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Verify candidate model bindings and Astra overlay
+      - name: Normalize candidate source
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one occurrence of {old!r}, found {count}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          # Keep the core Heavy route compact. Astra-specific detail lives in a
+          # separately installed policy and is loaded only for an Astra parent.
+          p = Path('codex_workflow/heavy_route.md')
+          text = p.read_text(encoding='utf-8')
+          start_marker = '## Astra parent efficiency overlay'
+          end_marker = '## Planning and Context Gateway'
+          if start_marker in text:
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              pointer = (
+                  'When the active Heavy parent is GPT-6 Astra, read and follow '
+                  '`<Codex home>/codex_workflow/astra_orchestration.md` as an additional route policy.\n\n'
+              )
+              text = text[:start] + pointer + text[end:]
+              p.write_text(text, encoding='utf-8')
+
+          # Make the V4.1 bindings durable regression expectations rather than
+          # patching the test only at runtime.
+          replace_once(
+              'scripts/test_workflow_runtime.py',
+              'workers["explorer"]["model"], "deepseek/deepseek-v4-flash"',
+              'workers["explorer"]["model"], "deepseek/deepseek-flash"',
+          )
+          replace_once(
+              'scripts/test_workflow_runtime.py',
+              'self.assertEqual(workers[role]["model"], "deepseek/deepseek-v4-pro")',
+              'self.assertEqual(workers[role]["model"], "deepseek/deepseek-flash")',
+          )
+
+          # The Astra overlay is part of the runtime package and must not be
+          # silently omitted from a source tree.
+          replace_once(
+              'codex_workflow/runtime/layout.py',
+              '                "heavy_route.md",\n                "medium_route.md",',
+              '                "heavy_route.md",\n                "astra_orchestration.md",\n                "medium_route.md",',
+          )
+
+          # Keep the human-facing model topology aligned with the worker TOMLs.
+          for path in ('README.md',):
+              replace_once(path, '| Explorer | DeepSeek V4 Flash | Max |', '| Explorer | DeepSeek V4.1 Flash | Max |')
+              replace_once(path, '| Executor Pro | DeepSeek V4 Pro | Max |', '| Executor Pro | DeepSeek V4.1 Flash | Max |')
+              replace_once(path, '| Reviewer Pro | DeepSeek V4 Pro | Max |', '| Reviewer Pro | DeepSeek V4.1 Flash | Max |')
+              replace_once(path, 'current DeepSeek V4 Flash/Pro workers', 'current DeepSeek V4.1 Flash workers')
+              replace_once(path, '├── heavy_route.md\n', '├── heavy_route.md\n├── astra_orchestration.md\n')
+
+          replace_once(
+              'codex_workflow/bootstrap.md',
+              'current DeepSeek V4 Flash/Pro\nworkers',
+              'current DeepSeek V4.1 Flash\nworkers',
+          )
+
+          replace_once(
+              'workflow_usage.md',
+              '    ├── heavy_route.md                      # Heavy-route orchestration rules\n',
+              '    ├── heavy_route.md                      # Heavy-route orchestration rules\n'
+              '    ├── astra_orchestration.md              # Astra-only Heavy efficiency overlay\n',
+          )
+          replace_once(
+              'workflow_usage.md',
+              '- `~/.codex/codex_workflow/heavy_route.md` defines Heavy orchestration,\n  delegation, limits, repair loops, and ownership.\n',
+              '- `~/.codex/codex_workflow/heavy_route.md` defines Heavy orchestration,\n  delegation, limits, repair loops, and ownership.\n'
+              '- `~/.codex/codex_workflow/astra_orchestration.md` adds the conditional\n  quota- and context-efficiency policy used only when the Heavy parent is GPT-6 Astra.\n',
+          )
+          PY
+
+      - name: Verify candidate model bindings and Astra policy
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           import tomllib
 
-          root = Path('.')
           expected = {
               'explorer': ('deepseek/deepseek-flash', 'max'),
               'executor_pro': ('deepseek/deepseek-flash', 'max'),
               'reviewer_pro': ('deepseek/deepseek-flash', 'max'),
           }
           for role, (model, effort) in expected.items():
-              data = tomllib.loads((root / 'codex_workflow' / 'agents' / f'{role}.toml').read_text())
+              data = tomllib.loads((Path('codex_workflow/agents') / f'{role}.toml').read_text())
               assert data['model'] == model, (role, data['model'])
               assert data['model_reasoning_effort'] == effort, (role, data['model_reasoning_effort'])
 
-          heavy = (root / 'codex_workflow' / 'heavy_route.md').read_text()
-          required = [
-              'Astra parent efficiency overlay',
+          heavy = Path('codex_workflow/heavy_route.md').read_text()
+          assert 'astra_orchestration.md' in heavy
+          assert len(heavy.splitlines()) < 225, len(heavy.splitlines())
+
+          policy = Path('codex_workflow/astra_orchestration.md').read_text()
+          for phrase in (
               'typically 2–3',
               'Astra owns worker topology',
               'Do not poll workers at fixed short intervals',
               'Give Tester the changed surfaces',
               'Do not add Sol or additional Astra sessions merely for another opinion',
-          ]
-          for phrase in required:
-              assert phrase in heavy, phrase
+          ):
+              assert phrase in policy, phrase
           PY
 
       - name: Run package validation
         run: python -B codex_workflow/workflow.py validate --package-root codex_workflow --json
 
-      - name: Run regression suite with candidate model expectations
+      - name: Run full regression suite
+        run: python -B scripts/test_workflow_runtime.py -v
+
+      - name: Commit normalized candidate
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('scripts/test_workflow_runtime.py')
-          text = p.read_text()
-          text = text.replace(
-              'workers["explorer"]["model"], "deepseek/deepseek-v4-flash"',
-              'workers["explorer"]["model"], "deepseek/deepseek-flash"',
-          )
-          text = text.replace(
-              'self.assertEqual(workers[role]["model"], "deepseek/deepseek-v4-pro")',
-              'self.assertEqual(workers[role]["model"], "deepseek/deepseek-flash")',
-          )
-          p.write_text(text)
-          PY
-          python -B scripts/test_workflow_runtime.py -v
+          if git diff --quiet; then
+            echo "Candidate already normalized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add codex_workflow/heavy_route.md codex_workflow/astra_orchestration.md \
+                  codex_workflow/runtime/layout.py codex_workflow/bootstrap.md \
+                  scripts/test_workflow_runtime.py README.md workflow_usage.md
+          git commit -m "test(workflow): lock V4.1 and Astra policy contracts"
+          git push origin HEAD:astra-low-v41-heavy
