@@ -47,7 +47,7 @@ jobs:
               end = text.index(end_marker, start)
               pointer = (
                   'When the active Heavy parent is GPT-6 Astra, read and follow '
-                  '`<Codex home>/codex_workflow/astra_orchestration.md` as an additional route policy.\n\n'
+                  '`<Codex home>/codex_workflow/astra_orchestration.md` as an additional route policy.\n'
               )
               text = text[:start] + pointer + text[end:]
               p.write_text(text, encoding='utf-8')
