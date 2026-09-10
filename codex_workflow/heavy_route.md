@@ -49,6 +49,7 @@ Questions and small or odd bounded tasks use a direct main-agent fast path: do
 not spawn, message, or otherwise call subagents and do not create work merely
 to use a worker. This fast path also skips End-of-Session and worker statistics.
 
+When the active Heavy parent is GPT-6 Astra, read and follow `<Codex home>/codex_workflow/astra_orchestration.md` as an additional route policy.
 ## Planning and Context Gateway
 
 Initialize Explorer as required by `<Codex home>/codex_workflow/explorer_companion.md`. Before allocating

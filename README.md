@@ -91,10 +91,10 @@ The current tested setup is:
 | Role | Model | Effort | Responsibility |
 | --- | --- | --- | --- |
 | Parent / Orchestrator | GPT-5.6 Sol | High | Planning, architecture, orchestration, final decisions |
-| Explorer | DeepSeek V4 Flash | Max | Read-only project and repository discovery |
+| Explorer | DeepSeek V4.1 Flash | Max | Read-only project and repository discovery |
 | Executor Luna | GPT-5.6 Luna | xhigh | Default implementation and routine repair |
 | Tester | GPT-5.6 Luna | xhigh | Independent verification and defect diagnosis |
-| Executor Pro | DeepSeek V4 Pro | Max | Serious or persistent repair |
+| Executor Pro | DeepSeek V4.1 Flash | Max | Serious or persistent repair |
 | End-of-Session | GPT-5.6 Luna | xhigh | Documentation reconciliation and Git-state handoff |
 
 The source also includes the following alternate and specialist roles:
@@ -103,10 +103,12 @@ The source also includes the following alternate and specialist roles:
 | --- | --- | --- | --- |
 | Executor Terra | GPT-5.6 Terra | High | Alternate default implementation executor |
 | Executor Sol | GPT-5.6 Sol | Medium | Difficult mathematical, logical, or cross-cutting work |
-| Reviewer Pro | DeepSeek V4 Pro | Max | Independent read-only deep review |
+| Reviewer Pro | DeepSeek V4.1 Flash | Max | Independent read-only deep review |
 | Doc-writer | GPT-5.6 Luna | xhigh | Targeted durable documentation and installation-time project-doc initialization |
 
 These roles are not automatic stages in every Heavy deployment.
+
+GPT-6 Astra Low is an optional Heavy parent under evaluation rather than a hard-coded workflow default. When Astra is the active parent, Heavy additionally loads `codex_workflow/astra_orchestration.md` to apply the quota- and context-efficiency policy derived from the current Astra trials.
 
 ---
 
@@ -324,7 +326,7 @@ with effective external configuration equivalent to:
 }
 ```
 
-`multiAgentMode = "v2"` is required for the intended V2 worker behavior, `syncCodexSubagentDefaults = false` avoids incompatible default-subagent writes, and `agentTaskRecovery` is required for the current DeepSeek V4 Flash/Pro workers.
+`multiAgentMode = "v2"` is required for the intended V2 worker behavior, `syncCodexSubagentDefaults = false` avoids incompatible default-subagent writes, and `agentTaskRecovery` is required for the current DeepSeek V4.1 Flash workers.
 
 The workflow does not install, modify, or update OpenCodex configuration itself. If the required runtime or external configuration cannot be verified, bootstrap stops.
 
@@ -530,6 +532,7 @@ codex_workflow/
 ├── update.md
 ├── medium_route.md
 ├── heavy_route.md
+├── astra_orchestration.md
 ├── explorer_companion.md
 ├── end_of_session.md
 ├── workflow.py

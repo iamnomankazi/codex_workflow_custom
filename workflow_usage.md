@@ -235,6 +235,7 @@ and the current project as follows:
     │   └── workflow_config.default.json
     ├── install_state.json                  # workflow ownership and installed-state manifest
     ├── heavy_route.md                      # Heavy-route orchestration rules
+    ├── astra_orchestration.md              # Astra-only Heavy efficiency overlay
     ├── medium_route.md                     # Medium-route rules
     ├── explorer_companion.md               # read-only context gateway and brief contracts
     ├── end_of_session.md                   # shared handoff spawn contract
@@ -647,6 +648,8 @@ Location: the resolved Codex home. The paths below show the default
   `executor_terra` remains available as the alternate default executor.
 - `~/.codex/codex_workflow/heavy_route.md` defines Heavy orchestration,
   delegation, limits, repair loops, and ownership.
+- `~/.codex/codex_workflow/astra_orchestration.md` adds the conditional
+  quota- and context-efficiency policy used only when the Heavy parent is GPT-6 Astra.
 - `~/.codex/codex_workflow/medium_route.md` defines main-agent execution with
   only Explorer and End-of-Session subagent exceptions.
 - `~/.codex/codex_workflow/explorer_companion.md` defines the read-only

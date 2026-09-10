@@ -6,7 +6,7 @@ Persistent read-only context gateway that refines project evidence into planning
 and knowledge-delta briefs for the main agent.
 """
 
-model = "deepseek/deepseek-v4-flash"
+model = "deepseek/deepseek-flash"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 
