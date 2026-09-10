@@ -65,6 +65,10 @@ If no live project surface exists, report that limitation.
 6. Run only compact non-test checks needed to validate the documentation
    framework and final diff. Broaden inspection only for contradictory evidence
    or an unexpected changed surface.
+   From inherited worker reports, record any workflow-created temporary
+   build/output directory that remains. Do not scan broadly for caches, delete
+   build artifacts during closure, or classify the project's normal build cache
+   as workflow junk.
 7. Inspect Git state read-only and report existing dirty, staged, and untracked
    state accurately. Do not stage, commit, push, reset, stash, checkout, clean,
    amend, or otherwise rewrite Git state. An unwritable `.git` directory is not
@@ -73,7 +77,8 @@ If no live project surface exists, report that limitation.
    lifecycle state; the parent does not supply or maintain a ledger. Return one
    concise final report with plan state, complete documentation-framework
    disposition, verification freshness, read-only Git-state result, remaining
-   dirty state, blockers, next entry point, and this exact three-column table
+   dirty state, leftover workflow-created temporary build/output paths when
+   known, blockers, next entry point, and this exact three-column table
    with one row per worker name used in this deployment:
 
    | Worker name | Quantity | Number of calls |

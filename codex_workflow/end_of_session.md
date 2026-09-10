@@ -26,7 +26,10 @@ xhigh model; its TOML contains the full procedure.
 
 The worker alone reconciles the complete `agent_docs/` framework, performs
 compact closing checks, inspects and reports Git state read-only without
-changing it, and returns the final handoff report and statistics table. Git
+changing it, and returns the final handoff report and statistics table. It
+also reports any workflow-created temporary build/output directory explicitly
+left by the deployment so generated junk cannot accumulate silently; it does
+not delete a project's normal build cache during closure. Git
 staging, committing, pushing, resetting, stashing, or any equivalent mutation is
 forbidden; an unwritable `.git` directory is not a handoff failure. Do not call a second documentation worker or duplicate these steps. Wait for the
 worker, then relay its result. Create a fresh uniquely named worker for every

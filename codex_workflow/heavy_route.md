@@ -98,12 +98,17 @@ Only when the assigned worker is `executor_luna`, make the capsule compact but
 execution-complete by adding an **Execution Guide** with:
 
 1. Starting state, relevant current behavior, and prerequisites.
-2. An ordered implementation sequence. For each step, name the exact file or
-   symbol, required change, rationale, affected interface or invariant, and the
-   focused check to run after that step.
+2. An ordered implementation sequence. Name the exact file or symbol, required
+   change, rationale, and affected interface or invariant. Group related edits
+   into coherent stages; for each stage, state the smallest focused check that
+   materially de-risks the next stage. Do not prescribe a full gate after each
+   small edit.
 3. Edge cases, failure paths, compatibility requirements, and explicit non-goals or forbidden changes.
 4. A validation ladder from focused checks through package tests to the
-   required integration gate, followed by a concrete completion checklist.
+   required integration gate, plus the build/output-cache strategy for expensive
+   or stateful toolchains. Prefer the project's reusable cache; when isolation is
+   required, assign one deterministic package-level path shared by executor and
+   tester. Finish with a concrete completion checklist.
 5. Stop and escalation conditions for invalid prerequisites, contradictory
    repository evidence, ownership expansion, or contract changes.
 
@@ -136,37 +141,19 @@ only after the relevant behavior is verified. Do not create a separate
 doc-writer for the automatic end-of-deployment framework reconciliation; the
 End-of-Session worker owns it.
 
-## Direct Repair and Pro Escalation
+## Verification, Repair, and Build Economy
 
-Pair each verification package with the responsible executor and both canonical task names.
-For Luna or Terra, Tester sends a focused `followup_task` defect packet to the same responsible worker. That executor repairs within its capsule,
-self-checks, then sends completion evidence via `send_message` to the same waiting
-tester. That mailbox, not the executor's ordinary final, wakes Tester to rerun the
-failed criterion and regressions; Parent is not the routine native-executor relay. Missing tester identity or failed delivery goes in the executor's parent-visible final; never stall or invent a replacement.
-For Luna, use the same Luna worker for repair #1. If the criterion still fails
-without a structural condition, use the same Luna worker for repair #2, direct
-message, and recheck. Never send a third routine Luna repair for that criterion.
-Count only a focused production-repair request reaching Luna, not implementation,
-self-check, tester corrections, wrong-test reruns, evidence-only contact,
-communication-only `send_message`, `wait_agent`, early escalation, or a re-scoped criterion.
-Before either Luna repair, return capsule/invariant
-conflict, cross-package contract or architecture change, expanded ownership,
-security risk, or migration risk to Parent immediately. After repair #2 still fails, tester sends the parent a compact serious packet with task/package/iteration,
-criterion/reproduction, observed/expected behavior, affected contract, focused
-evidence, both outcomes, and scope or risk. Tester never creates Pro.
-For manually selected Terra, use one same-Terra `followup_task`, self-check, direct
-`send_message`, and recheck. A remaining failure or material condition returns
-evidence to Parent for its decision. Terra does not inherit Luna's two-repair or
-automatic-Pro ladder: no Terra-to-Luna, second-Terra, Pro, Sol, or Reviewer fallback.
-After Luna's serious packet, Parent normally creates one initial `executor_pro` with
-`fork_turns="none"`; its capsule carries authority, decisions/invariants, current
-implementation, failed criterion, both Luna outcomes, tester evidence, affected
-contracts, repair surface, regression boundary, and verification—not Luna's Guide
-or raw history. The parent retains Pro's canonical identity and spawn ownership.
-Every Pro final returns to the parent, which thin-relays it unchanged via
-`send_message` to the same waiting tester; that mailbox wakes tester to recheck, and later defects use `followup_task` deltas to the same Pro and repeat this relay.
-Never respawn Pro. If unavailable, conflicted, or failed, return evidence to Parent;
-do not automatically invoke `executor_sol` or `reviewer_pro`.
+Verification proves assigned behavior without multiplying equivalent builds or repair turns. Parent includes the build/output strategy in executor/tester capsules for expensive or stateful toolchains.
+- Reuse the project's normal build cache when safe. If isolation is required, Parent assigns exactly one deterministic package-level path shared by every executor/tester turn. For Cargo use normal `target` by default or one assigned `CARGO_TARGET_DIR`; never create numbered/per-attempt targets merely for fresh verification. Commands sharing mutable build output run sequentially.
+- Cold/clean rebuilds require concrete cache-corruption/staleness evidence or an explicit clean-build acceptance gate. Use focused checks during implementation/repair; run broad build, lint, typecheck, or full-suite gates at coherent integration points and rerun only when later edits could invalidate their evidence.
+- For any workflow-only isolated build path, Parent assigns cleanup ownership in the capsule; default to Tester when executor and tester share it. The cleanup owner removes it only after the final required verification/repair consumer when clearly safe. Never delete the project's normal build cache as workflow cleanup; if temporary output must remain, report its exact path and purpose for closure.
+- Tester completes one verification pass before routine repair when practical and consolidates all material same-scope failures into one packet. Material means an assigned acceptance failure, existing public-contract/established-invariant violation, security/data-integrity issue, or regression directly touched by the change. Adjacent robustness, exhaustive-enumeration, style, or nice-to-have findings below that threshold are residual observations, not automatic production scope.
+
+Pair each verification package with its responsible executor and both canonical task names. Tester sends one consolidated `followup_task` packet containing every material same-scope failure from the pass, minimal reproductions, observed/expected behavior, affected contracts, focused evidence, and scope/risk. The executor repairs the packet, self-checks affected surfaces, and signals the waiting tester with `send_message`; Tester reruns packet criteria and directly affected regressions. Parent is not the routine relay.
+For Luna, the repair budget is package-level: repair round #1 and, if material assigned failures remain or a newly exposed material same-scope failure appears, one consolidated repair round #2 on the same Luna worker. Never split known failures to gain rounds or send a third routine production-repair round for that package/iteration. Original implementation, self-check, tester-owned corrections, wrong-test reruns, evidence-only contact, `send_message`, waiting, early escalation, and parent-created materially re-scoped work do not consume the budget.
+Before either Luna round, return capsule/invariant conflict, cross-package contract or architecture change, expanded ownership, security risk, or migration risk to Parent. After round #2, any remaining material assigned failure returns as one serious packet with remaining criteria, evidence, affected contracts, and both repair outcomes; Tester never creates Pro.
+For manually selected Terra, Tester sends one consolidated same-Terra `followup_task`; Terra repairs, self-checks, directly signals Tester, and gets one recheck. Any remaining material failure or structural condition returns to Parent; there is no automatic second Terra, Terra-to-Luna substitution, or Pro/Sol/Reviewer fallback.
+After Luna's serious packet, Parent may create one `executor_pro` with `fork_turns="none"`, retaining canonical identity/spawn ownership. Its capsule carries authority, decisions/invariants, current implementation, remaining material failures, both Luna outcomes, tester evidence, affected contracts, repair surface, regression boundary, and verification—not Luna's Guide or raw history. Pro finals return to Parent, which thin-relays them with `send_message` to the same waiting Tester; bounded material follow-ups reuse the same Pro. Never respawn Pro or extend escalation for non-material adjacent findings. If Pro is unavailable, conflicted, or fails, return evidence to Parent; do not automatically invoke `executor_sol` or `reviewer_pro`.
 
 ## Layered Evidence and Reports
 

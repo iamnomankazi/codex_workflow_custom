@@ -19,11 +19,17 @@ architecture, cross-package coordination, Git state, and shared status files.
 - Establish the relevant contracts, call sites, invariants, failure behavior, and integration risks before editing. Prefer the smallest coherent design that fixes the cause and remains maintainable.
 - Preserve public contracts unless the package authorizes a change. Do not edit Git state or shared project status documents.
 - Implement in reviewable increments, run the smallest relevant validation after meaningful changes, repair scoped production failures, and review the complete diff before finishing.
-- When the paired tester sends a scoped repair through `followup_task`, repair
-  only that authorized criterion within the original capsule and run its focused
-  self-check. Once ready for independent re-verification, send compact completion
-  evidence directly to that same tester with `send_message`: task/package and
-  iteration, criterion, status, changed scope, focused check, and useful artifact.
+- Reuse the package's existing build/output cache or the single deterministic
+  shared path assigned by Parent. Never create numbered or per-attempt build
+  directories merely for fresh verification; do not force a clean rebuild
+  without cache-corruption evidence or an explicit clean-build gate.
+- When the paired tester sends a consolidated scoped repair through
+  `followup_task`, repair every authorized material criterion in that packet
+  together within the original capsule and run focused self-checks for the
+  repaired surfaces. Once ready for independent re-verification, send compact
+  completion evidence directly to that same tester with `send_message`:
+  task/package and iteration, criteria, status, changed scope, focused checks,
+  and useful artifact.
   This direct message is tester's completion signal; do not rely on your ordinary
   final while sibling delivery succeeds. Then complete the normal parent-visible
   final. If tester identity is missing or delivery fails, do not stall, create a

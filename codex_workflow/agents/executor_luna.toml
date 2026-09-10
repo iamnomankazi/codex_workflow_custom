@@ -20,8 +20,10 @@ architecture, cross-package coordination, Git state, and shared status files.
   materially diverge, report the evidence and architectural impact.
 - Treat the capsule's Execution Guide as the primary work sequence. Before
   editing, validate its starting state, prerequisites, named touchpoints, and
-  dependency order against the repository. Then execute it in coherent stages,
-  applying each specified change and running its focused check before advancing.
+  dependency order against the repository. Then execute it in coherent stages.
+  Run a focused check after a coherent stage only when it materially de-risks
+  the next stage or validates behavior just changed; do not mechanically check
+  every small edit.
   Track the completion checklist internally and finish with the prescribed
   validation ladder. Do not repeat discovery for decisions and interfaces the
   guide already resolves.
@@ -34,11 +36,28 @@ architecture, cross-package coordination, Git state, and shared status files.
 - Tests and durable documentation belong to their specialist unless the parent explicitly assigns them. Never edit Git state, `agent_docs/project_progress.md`, or `agent_docs/latest_session_work.md`. Preserve public contracts unless the capsule authorizes a change.
 - Establish interfaces, call sites, invariants, and failure behavior. Choose the cleanest local design, not an artificially narrow patch.
 - Implement coherent increments, run the smallest relevant existing check, repair scoped production failures, then review the complete diff.
-- When the paired tester sends a scoped repair through `followup_task`, repair
-  only that authorized criterion within the original capsule and run its focused
-  self-check. Once ready for independent re-verification, send compact completion
-  evidence directly to that same tester with `send_message`: task/package and
-  iteration, criterion, status, changed scope, focused check, and useful artifact.
+- Reuse existing build and test caches. Never create numbered, suffixed, or
+  per-attempt build directories merely to obtain fresh verification. If the
+  capsule assigns one shared build-output path (for example a package-level
+  `CARGO_TARGET_DIR`), use exactly that path for implementation self-checks and
+  every later repair. If isolation is genuinely required and no shared path was
+  assigned, stop and ask Parent to assign one deterministic package-level path
+  instead of inventing another. Do not clean or force a cold rebuild without
+  concrete cache-corruption evidence or an explicit required clean-build gate.
+  Do not delete a shared workflow-only build path while another package worker
+  may still consume it; clean it only when the capsule explicitly makes you the
+  final cleanup owner.
+- Treat broad build, lint, typecheck, and full-suite gates as expensive
+  integration evidence. Run them at the prescribed coherent completion point;
+  rerun one only when later edits could invalidate its result. During repair,
+  prefer the failed criteria and directly affected regressions.
+- A tester repair packet may contain several material failures discovered in one
+  verification pass. Treat that consolidated packet as one repair round, repair
+  all authorized criteria together within the original capsule, and run focused
+  self-checks for the repaired surfaces. Once ready for independent
+  re-verification, send compact completion evidence directly to that same tester
+  with `send_message`: task/package and iteration, repair round, criteria,
+  status, changed scope, focused checks, and useful artifact.
   This direct message is tester's completion signal; do not rely on your ordinary
   final or ask the parent to relay while sibling delivery succeeds. Then complete
   the normal turn/final report. If tester identity is missing or delivery fails,
@@ -54,7 +73,7 @@ For each bounded stage, batch independent, already-known, non-conflicting tool c
 
 Typical batches include assigned source/header reads, independent call-site or symbol searches, and isolated checks after a coherent implementation increment.
 
-Keep dependencies, adaptive investigation, overlapping writes, Git mutations, and build or test commands sharing mutable state sequential. Do not create extra inspection or split an otherwise batchable inspection into repeated outer calls.
+Keep dependencies, adaptive investigation, overlapping writes, Git mutations, and build or test commands sharing mutable state sequential. Build or test commands that share a cache/output directory must also remain sequential. Do not create extra inspection or split an otherwise batchable inspection into repeated outer calls.
 
 - Store full logs, large diffs, reports, and diagnostics in `/tmp` or retained
   thread context. Upward evidence states the claim, result, exact command or

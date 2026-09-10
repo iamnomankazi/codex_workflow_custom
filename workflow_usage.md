@@ -507,75 +507,71 @@ The normal implementation and verification loop is:
 
 ```text
 User selects Heavy route
-        │
-        ▼
-Explorer refines project and repository evidence into a planning brief
-        │
-        ▼
-Main forms architecture and distributes guidance-rich package(s)
-        │
-        ▼
-Luna implements one coherent increment and self-validates
-        │
-        ▼
-Tester runs focused checks; Luna gets at most two same-criterion repairs
-        │ failure
-        ▼
-Tester followup_task ─► same Luna repair #1 and focused self-check
-        │ Luna send_message completion wakes Tester
-        ▼
-Tester rechecks the failed criterion and affected regressions
-        │ same criterion still fails
-        ▼
-Tester followup_task ─► same Luna repair #2 and focused self-check
-        │ Luna send_message completion wakes Tester
-        ▼
-Tester rechecks the failed criterion and affected regressions
-        │ same criterion still fails
-        ▼
-Parent creates one isolated executor_pro and retains its canonical identity
-        │ Pro final returns to Parent
-        ▼
-Parent thin-relays result via send_message to the same waiting Tester
-        │ mailbox wakes Tester
-        ▼
-Tester rechecks the focused criterion
-        │ bounded follow-up defect
-        ├── followup_task to same Pro ─► final to Parent ─► same relay ─► recheck
-        ├── proof ─────────► compact knowledge report
-        └── structural evidence ─► parent resolves scope/authority immediately
-        │
-        ▼
-Explorer consolidates material knowledge deltas when needed
-        │
-        ▼
-Main integrates verified package outcomes
-        │
-        ▼
-Fresh Luna xhigh worker automatically closes the deployment before the final response
+  -> Explorer returns the planning brief
+  -> Main defines architecture, acceptance, package ownership, and build/cache strategy
+  -> Luna implements coherent stages and self-validates using the shared build cache
+  -> Tester completes one verification pass across assigned acceptance criteria
+       -> proof: compact verification report
+       -> material failures: one consolidated Luna repair round #1
+  -> Luna repairs the complete packet together, focused self-check, send_message
+  -> Tester rechecks packet failures and directly affected regressions
+       -> material failures remain/new same-scope failure: consolidated repair round #2
+  -> Luna repairs the complete second packet together, focused self-check, send_message
+  -> Tester rechecks packet failures and affected regressions
+       -> remaining material assigned failure: serious packet to Parent
+  -> Parent may create one executor_pro and retains its canonical identity
+  -> Pro final returns to Parent; Parent thin-relays it to the waiting Tester
+  -> Tester rechecks remaining material criteria; bounded Pro follow-ups reuse same Pro
+  -> Explorer consolidates material knowledge deltas when needed
+  -> Main integrates verified package outcomes
+  -> Fresh Luna xhigh worker automatically closes the deployment before final response
 ```
 
 The tester and responsible executor receive each other's canonical task names.
-For Luna, only focused production requests for the same criterion count toward
-the two-repair limit; implementation, tester-owned corrections, wrong-test
-reruns, evidence-only contact, completion `send_message`, waiting, early
-escalation, and parent-created new or re-scoped criteria do not. Each routine
-repair uses `followup_task` on the same Luna; after repair and self-check, Luna's
-direct `send_message` wakes tester to recheck without a routine parent relay.
-After the second failed recheck, tester reports both outcomes to the parent and
-never creates Pro. Parent assigns one isolated `executor_pro`, retains its
-canonical identity, and gives it to tester. Pro finals return to the parent as
-spawn owner; parent thin-relays each result with `send_message` to the same
-waiting tester. Tester rechecks and sends another bounded `followup_task` to the
-same Pro when needed; that final repeats the parent relay. Structural contract,
-architecture, ownership, security, or migration evidence bypasses remaining Luna
-attempts. Terra has no automatic ladder; Reviewer Pro and Sol remain selective
-parent decisions. When Terra is manually selected, tester sends one
-`followup_task` to the same Terra worker; Terra repairs, self-checks, and directly
-signals that waiting tester with `send_message` for recheck. A remaining failure
-returns to the parent for a decision—there is no automatic second Terra,
-Terra-to-Luna substitution, or Pro/Sol/Reviewer fallback. Test and fixture
-defects stay with tester.
+For Luna, the routine repair budget is package-level: at most two consolidated
+production-repair rounds for the package and iteration, always on the same Luna
+worker. Tester completes a verification pass when practical and batches every
+material same-scope production failure into one packet instead of repairing one
+criterion while other assigned criteria remain untested. Original implementation,
+tester-owned corrections, wrong-test reruns, evidence-only contact, completion
+`send_message`, waiting, early escalation, and parent-created materially
+re-scoped work do not consume a repair round. After each repair, Luna's direct
+`send_message` wakes tester to rerun the packet failures and affected regressions
+without a routine parent relay. After round #2, any remaining material assigned
+failure returns to Parent; Tester never creates Pro.
+
+Heavy also owns verification economy. Expensive or stateful toolchains reuse the
+project's normal build cache when safe. If isolation is required, Parent assigns
+one deterministic package-level build-output path shared by executor and tester;
+workers never create numbered/per-attempt caches merely for fresh verification.
+For Cargo this means the normal `target` directory by default, or one assigned
+`CARGO_TARGET_DIR` when isolation is necessary. Clean/cold rebuilds require
+cache-corruption evidence or an explicit clean-build gate. Broad gates are run at
+coherent integration points and rerun only when later changes can invalidate
+their evidence. For a workflow-only isolated cache, Parent assigns cleanup
+ownership in the capsule (Tester by default when executor and tester share it).
+The cleanup owner removes it only after the final required consumer when clearly
+safe; otherwise its exact path is reported at closure. The project's normal
+build cache is never treated as workflow junk.
+
+A production finding triggers repair only when it violates an assigned acceptance
+criterion, an existing public contract or established invariant, security/data
+integrity, or a regression directly touched by the change. Adjacent robustness,
+exhaustive enumeration, style, and nice-to-have observations below that threshold
+are reported as residuals instead of automatically expanding production scope.
+
+Parent assigns one isolated `executor_pro` only for remaining serious material
+failures after the Luna budget or for an earlier structural escalation. Pro finals
+return to the parent as spawn owner; parent thin-relays each result with
+`send_message` to the same waiting tester. Bounded material follow-ups reuse the
+same Pro; non-material adjacent findings do not extend the escalation. Structural
+contract, architecture, ownership, security, or migration evidence bypasses the
+remaining Luna budget. Terra has no automatic ladder: when manually selected,
+tester sends one consolidated `followup_task` to the same Terra worker; Terra
+repairs, self-checks, and directly signals the waiting tester with `send_message`
+for recheck. A remaining material failure returns to the parent for a decision;
+there is no automatic second Terra, Terra-to-Luna substitution, or
+Pro/Sol/Reviewer fallback. Test and fixture defects stay with tester.
 
 Workers keep raw logs, large diffs, reports, responses, and diagnostics in
 artifacts or retained thread context. Upward reports give the outcome, contract
