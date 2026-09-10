@@ -591,7 +591,7 @@ class ConfigTests(unittest.TestCase):
         }
         self.assertEqual(workers["explorer"]["name"], "explorer")
         self.assertEqual(
-            workers["explorer"]["model"], "deepseek/deepseek-v4-flash"
+            workers["explorer"]["model"], "deepseek/deepseek-flash"
         )
         self.assertEqual(workers["explorer"]["model_reasoning_effort"], "max")
         self.assertEqual(workers["explorer"]["sandbox_mode"], "read-only")
@@ -601,7 +601,7 @@ class ConfigTests(unittest.TestCase):
 
         for role in ("executor_pro", "reviewer_pro"):
             self.assertEqual(workers[role]["name"], role)
-            self.assertEqual(workers[role]["model"], "deepseek/deepseek-v4-pro")
+            self.assertEqual(workers[role]["model"], "deepseek/deepseek-flash")
             self.assertEqual(workers[role]["model_reasoning_effort"], "max")
         self.assertEqual(workers["executor_pro"]["sandbox_mode"], "workspace-write")
         self.assertEqual(workers["reviewer_pro"]["sandbox_mode"], "read-only")
