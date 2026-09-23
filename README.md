@@ -86,7 +86,7 @@ Workers are not spawned simply because they are available.
 
 Worker models are defined by their installed role TOMLs. For ChatGPT/Codexless
 Heavy launches, the caller selects the parent before the turn starts: plain
-Heavy explicitly uses `gpt-5.6-sol` with `high` effort, never a catalog default.
+Heavy explicitly uses `gpt-6-sol` with `high` effort, never a catalog default.
 GPT-6 Astra is opt-in only at exactly the user-requested supported effort. A
 parent cannot change its own already-running model. Immediately after start,
 the caller verifies requested versus resolved model and effort; any mismatch
@@ -96,21 +96,21 @@ The current tested setup is:
 
 | Role | Model | Effort | Responsibility |
 | --- | --- | --- | --- |
-| Parent / Orchestrator | GPT-5.6 Sol | High | Planning, architecture, orchestration, final decisions |
+| Parent / Orchestrator | GPT-6 Sol | High | Planning, architecture, orchestration, final decisions |
 | Explorer | DeepSeek V4.1 Flash | Max | Read-only project and repository discovery |
-| Executor Luna | GPT-5.6 Luna | xhigh | Default implementation and routine repair |
-| Tester | GPT-5.6 Luna | xhigh | Independent verification and defect diagnosis |
+| Executor Luna | GPT-6 Luna | Max | Default implementation and routine repair |
+| Tester | GPT-6 Luna | Max | Independent verification and defect diagnosis |
 | Executor Pro | DeepSeek V4.1 Flash | Max | Serious or persistent repair |
-| End-of-Session | GPT-5.6 Luna | xhigh | Documentation reconciliation and Git-state handoff |
+| End-of-Session | GPT-6 Luna | Max | Documentation reconciliation and Git-state handoff |
 
 The source also includes the following alternate and specialist roles:
 
 | Role | Model | Effort | Use |
 | --- | --- | --- | --- |
 | Executor Terra | GPT-5.6 Terra | High | Alternate default implementation executor |
-| Executor Sol | GPT-5.6 Sol | Medium | Difficult mathematical, logical, or cross-cutting work |
+| Executor Sol | GPT-6 Sol | Medium | Difficult mathematical, logical, or cross-cutting work |
 | Reviewer Pro | DeepSeek V4.1 Flash | Max | Independent read-only deep review |
-| Doc-writer | GPT-5.6 Luna | xhigh | Targeted durable documentation and installation-time project-doc initialization |
+| Doc-writer | GPT-6 Luna | Max | Targeted durable documentation and installation-time project-doc initialization |
 
 These roles are not automatic stages in every Heavy deployment.
 
@@ -401,7 +401,7 @@ The current default configuration uses:
 ```json
 {
   "default_executor": "executor_luna",
-  "default_executor_reasoning_effort": "xhigh",
+  "default_executor_reasoning_effort": "max",
   "max_concurrent_workers": 20,
   "max_executor_sol_instances": 1,
   "report_package_size": 250

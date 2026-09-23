@@ -22,7 +22,7 @@ Pass only the active route, deployment ID, and closure state (`complete`,
 `paused`, or `blocked`). Do not summarize the session, build a task capsule, or
 maintain a usage ledger. The automatic finite fork passes recent main-agent
 turns so the worker inherits the deployment context while retaining its Luna
-xhigh model; its TOML contains the full procedure.
+max model; its TOML contains the full procedure.
 
 The worker alone reconciles the complete `agent_docs/` framework, performs
 compact closing checks, inspects and reports Git state read-only without

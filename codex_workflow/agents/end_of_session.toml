@@ -2,8 +2,8 @@
 name = "end_of_session"
 description = "Single inherited-context owner for automatic Medium and Heavy deployment closure."
 
-model = "gpt-5.6-luna"
-model_reasoning_effort = "xhigh"
+model = "gpt-6-luna"
+model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """

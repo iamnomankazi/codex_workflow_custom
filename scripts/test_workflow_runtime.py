@@ -275,7 +275,7 @@ class MarkerTests(unittest.TestCase):
         launch_contract = " ".join("\n".join((agents_policy, heavy, usage, readme)).split())
         for required_launch_rule in (
             "caller selects the parent before the turn starts",
-            "`gpt-5.6-sol` with `high` effort",
+            "`gpt-6-sol` with `high` effort",
             "never rely on a catalog default",
             "A parent cannot change its own already-running model",
             "requested versus resolved model and effort",
@@ -361,14 +361,15 @@ class MarkerTests(unittest.TestCase):
             )
         )
         self.assertEqual(default_config["default_executor"], "executor_luna")
-        self.assertEqual(luna_config["model"], "gpt-5.6-luna")
-        self.assertEqual(luna_config["model_reasoning_effort"], "xhigh")
+        self.assertEqual(default_config["default_executor_reasoning_effort"], "max")
+        self.assertEqual(luna_config["model"], "gpt-6-luna")
+        self.assertEqual(luna_config["model_reasoning_effort"], "max")
         self.assertEqual(luna_config["sandbox_mode"], "workspace-write")
         self.assertEqual(terra_config["model"], "gpt-5.6-terra")
         self.assertEqual(terra_config["model_reasoning_effort"], "high")
         self.assertEqual(terra_config["sandbox_mode"], "workspace-write")
-        self.assertEqual(tester_config["model"], "gpt-5.6-luna")
-        self.assertEqual(tester_config["model_reasoning_effort"], "xhigh")
+        self.assertEqual(tester_config["model"], "gpt-6-luna")
+        self.assertEqual(tester_config["model_reasoning_effort"], "max")
         self.assertEqual(tester_config["sandbox_mode"], "workspace-write")
         self.assertIn("Execution Guide as the primary work sequence", executor)
         self.assertIn("Track the completion checklist internally", executor)
@@ -616,6 +617,23 @@ class ConfigTests(unittest.TestCase):
             workers["executor_pro"]["developer_instructions"],
             workers["reviewer_pro"]["developer_instructions"],
         )
+
+    def test_heavy_sol_and_luna_role_templates_use_gpt_6(self) -> None:
+        for role in ("executor_luna", "tester", "doc-writer", "end_of_session"):
+            worker = tomllib.loads(
+                (PACKAGE / "agents" / f"{role}.toml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(worker["model"], "gpt-6-luna", role)
+            self.assertEqual(worker["model_reasoning_effort"], "max", role)
+        sol = tomllib.loads(
+            (PACKAGE / "agents" / "executor_sol.toml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(sol["model"], "gpt-6-sol")
+        self.assertEqual(sol["model_reasoning_effort"], "medium")
+        for name in ("AGENTS.md", "heavy_route.md"):
+            policy = (PACKAGE / name).read_text(encoding="utf-8")
+            self.assertIn("`gpt-6-sol` with `high` effort", policy, name)
+            self.assertNotIn("`gpt-5.6-sol`", policy, name)
 
     def test_deepseek_worker_templates_render_deterministically_without_volatile_values(self) -> None:
         config = load_config(
@@ -1076,7 +1094,7 @@ class ConfigTests(unittest.TestCase):
             (PACKAGE / "heavy_route.md").read_text(encoding="utf-8"), config
         )
         self.assertIn("Maximum concurrent child workers: `20`", rendered)
-        self.assertIn("Default executor: `executor_luna` (`xhigh`", rendered)
+        self.assertIn("Default executor: `executor_luna` (`max`", rendered)
         self.assertNotIn("End-of-Session context fork", rendered)
         self.assertIn(
             'fork_turns="200"',
@@ -1502,6 +1520,19 @@ class LifecycleIntegrationTests(unittest.TestCase):
             )
         state = json.loads((self.runtime.runtime / "install_state.json").read_text())
         self.assertEqual(set(state["owned_workers"]), self.package.worker_names)
+        self.assertEqual(state["source_id"], self.package.source_id)
+        for role in ("executor_luna", "tester", "doc-writer", "end_of_session"):
+            installed = tomllib.loads(
+                (self.runtime.agents / f"{role}.toml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(installed["model"], "gpt-6-luna", role)
+            self.assertEqual(installed["model_reasoning_effort"], "max", role)
+        for role in ("explorer", "executor_pro", "reviewer_pro"):
+            installed = tomllib.loads(
+                (self.runtime.agents / f"{role}.toml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(installed["model"], "deepseek/deepseek-flash", role)
+            self.assertEqual(installed["model_reasoning_effort"], "max", role)
 
     def test_configure_switches_default_executor_without_touching_local_region(self) -> None:
         self.bootstrap(existing_agents="Local policy.\n")

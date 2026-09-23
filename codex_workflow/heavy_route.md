@@ -5,7 +5,7 @@ Use after Heavy is selected under `AGENTS.md`.
 <!-- codex-workflow-effective-config-start -->
 ## Effective Workflow Configuration
 
-- Default executor: `executor_luna` (`xhigh` reasoning effort).
+- Default executor: `executor_luna` (`max` reasoning effort).
 - Enabled workers: `executor_luna`, `executor_pro`, `reviewer_pro`, `executor_sol`, `tester`, `doc-writer`, `explorer`, `end_of_session`.
 - Maximum concurrent child workers: `20`.
 - Maximum `executor_sol` workers: `1`.
@@ -17,7 +17,7 @@ Create only enabled workers and obey these limits.
 ## Heavy launch boundary
 
 For ChatGPT/Codexless Heavy launches, the caller selects the parent before the
-turn starts. Plain Heavy explicitly uses `gpt-5.6-sol` with `high` effort;
+turn starts. Plain Heavy explicitly uses `gpt-6-sol` with `high` effort;
 never rely on a catalog default. GPT-6 Astra is opt-in only at exactly the
 user-requested supported effort. A parent cannot change its own already-running
 model. Immediately after start, the caller verifies requested versus resolved

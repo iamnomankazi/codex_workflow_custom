@@ -181,7 +181,7 @@ There are three execution routes:
   larger deployment-state tasks.
 
 For ChatGPT/Codexless Heavy launches, the caller selects the parent before the
-turn starts. Plain Heavy explicitly uses `gpt-5.6-sol` with `high` effort,
+turn starts. Plain Heavy explicitly uses `gpt-6-sol` with `high` effort,
 never a catalog default. GPT-6 Astra is opt-in only at exactly the
 user-requested supported effort. A parent cannot change its own already-running
 model. Immediately after start, the caller verifies requested versus resolved
@@ -198,7 +198,7 @@ use heavy route. [task description]
 
 The selected route remains active until the user changes it or the session
 ends. Each substantive Medium or Heavy deployment automatically creates a fresh
-Luna xhigh worker before its final response. That worker receives the configured
+Luna max worker before its final response. That worker receives the configured
 recent main-agent turns and alone reconciles the complete `agent_docs/`
 framework, reports Git state without mutating it, and returns the final three-column
 worker-statistics table. No manual closure prompt, main-agent summary, usage
@@ -333,7 +333,7 @@ The current default snapshot is:
 {
   "schema_version": 5,
   "default_executor": "executor_luna",
-  "default_executor_reasoning_effort": "xhigh",
+  "default_executor_reasoning_effort": "max",
   "auto_check_update": false,
   "max_concurrent_workers": 20,
   "max_executor_sol_instances": 1,
@@ -536,7 +536,7 @@ User selects Heavy route
   -> Tester rechecks remaining material criteria; bounded Pro follow-ups reuse same Pro
   -> Explorer consolidates material knowledge deltas when needed
   -> Main integrates verified package outcomes
-  -> Fresh Luna xhigh worker automatically closes the deployment before final response
+  -> Fresh Luna max worker automatically closes the deployment before final response
 ```
 
 The tester and responsible executor receive each other's canonical task names.
@@ -622,7 +622,7 @@ deployment remains recorded concisely instead of clearing both files.
 
 Before each substantive Medium or Heavy deployment returns its final response,
 the route automatically creates a fresh, uniquely named `end_of_session` worker
-with the handoff contract's finite context fork. This preserves its Luna xhigh
+with the handoff contract's finite context fork. This preserves its Luna max
 model while inheriting recent main-agent context. Without a parent-built capsule
 or usage ledger, it reconciles every core and module-specific
 `agent_docs/` file against verified deployment facts, performs compact closing
@@ -691,7 +691,7 @@ Primary resource:
 The resource currently contains:
 
 1. `default_executor`: currently `executor_luna`;
-2. `default_executor_reasoning_effort`: currently `xhigh`;
+2. `default_executor_reasoning_effort`: currently `max`;
 3. legacy `auto_check_update`: always `false`;
 4. `max_concurrent_workers`: currently `20`;
 5. `max_executor_sol_instances`: currently `1`;

@@ -2,8 +2,8 @@
 name = "tester"
 description = "Independent testing sub-agent for a bounded parent-provided verification package."
 
-model = "gpt-5.6-luna"
-model_reasoning_effort = "xhigh"
+model = "gpt-6-luna"
+model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """

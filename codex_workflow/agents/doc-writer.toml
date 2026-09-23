@@ -2,8 +2,8 @@
 name = "doc-writer"
 description = "Documentation sub-agent for targeted durable updates from verified parent-provided facts."
 
-model = "gpt-5.6-luna"
-model_reasoning_effort = "xhigh"
+model = "gpt-6-luna"
+model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
