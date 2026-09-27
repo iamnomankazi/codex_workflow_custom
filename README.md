@@ -98,10 +98,10 @@ The current tested setup is:
 | --- | --- | --- | --- |
 | Parent / Orchestrator | GPT-6 Sol | High | Planning, architecture, orchestration, final decisions |
 | Explorer | DeepSeek V4.1 Flash | Max | Read-only project and repository discovery |
-| Executor Luna | GPT-6 Luna | Max | Default implementation and routine repair |
-| Tester | GPT-6 Luna | Max | Independent verification and defect diagnosis |
+| Executor Luna | GPT-6 Luna | XHigh | Default implementation and routine repair |
+| Tester | GPT-6 Luna | XHigh | Independent verification and defect diagnosis |
 | Executor Pro | DeepSeek V4.1 Flash | Max | Serious or persistent repair |
-| End-of-Session | GPT-6 Luna | Max | Documentation reconciliation and Git-state handoff |
+| End-of-Session | GPT-6 Luna | XHigh | Documentation reconciliation and Git-state handoff |
 
 The source also includes the following alternate and specialist roles:
 
@@ -110,7 +110,7 @@ The source also includes the following alternate and specialist roles:
 | Executor Terra | GPT-5.6 Terra | High | Alternate default implementation executor |
 | Executor Sol | GPT-6 Sol | Medium | Difficult mathematical, logical, or cross-cutting work |
 | Reviewer Pro | DeepSeek V4.1 Flash | Max | Independent read-only deep review |
-| Doc-writer | GPT-6 Luna | Max | Targeted durable documentation and installation-time project-doc initialization |
+| Doc-writer | GPT-6 Luna | XHigh | Targeted durable documentation and installation-time project-doc initialization |
 
 These roles are not automatic stages in every Heavy deployment.
 
@@ -401,7 +401,7 @@ The current default configuration uses:
 ```json
 {
   "default_executor": "executor_luna",
-  "default_executor_reasoning_effort": "max",
+  "default_executor_reasoning_effort": "xhigh",
   "max_concurrent_workers": 20,
   "max_executor_sol_instances": 1,
   "report_package_size": 250

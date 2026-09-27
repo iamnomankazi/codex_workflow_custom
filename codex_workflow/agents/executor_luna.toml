@@ -3,7 +3,7 @@ name = "executor_luna"
 description = "Production implementation sub-agent for bounded code changes from a parent-owned plan."
 
 model = "gpt-6-luna"
-model_reasoning_effort = "max"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """

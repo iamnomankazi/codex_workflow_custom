@@ -5,7 +5,7 @@ Use after Heavy is selected under `AGENTS.md`.
 <!-- codex-workflow-effective-config-start -->
 ## Effective Workflow Configuration
 
-- Default executor: `executor_luna` (`max` reasoning effort).
+- Default executor: `executor_luna` (`xhigh` reasoning effort).
 - Enabled workers: `executor_luna`, `executor_pro`, `reviewer_pro`, `executor_sol`, `tester`, `doc-writer`, `explorer`, `end_of_session`.
 - Maximum concurrent child workers: `20`.
 - Maximum `executor_sol` workers: `1`.
