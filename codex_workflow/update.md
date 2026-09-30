@@ -23,7 +23,7 @@ is performed. Running `update` without `--source` fails closed with an
 instruction to provide a local package root.
 
 Before applying an update that enables Multi-Agent V2, verify the active
-OpenCodex runtime remains at the empirically tested baseline `2.50.0` and its effective
+OpenCodex runtime remains at the compatibility baseline `2.74.0` (or a verified newer version with GPT-6.1 Sol model discovery) and its effective
 external configuration still provides `multiAgentMode = "v2"`,
 `syncCodexSubagentDefaults = false`, and `agentTaskRecovery` enabled using model
 `gpt-5.6-sol`, `timeoutMs` `45000`, and `cacheEntries` `200`. Stop if any part of

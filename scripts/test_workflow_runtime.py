@@ -261,7 +261,7 @@ class MarkerTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         recovery_contract = "\n".join((bootstrap, update, usage, readme))
         for required_recovery_value in (
-            "2.50.0",
+            "2.74.0",
             "agentTaskRecovery",
             "gpt-5.6-sol",
             "45000",
@@ -275,7 +275,7 @@ class MarkerTests(unittest.TestCase):
         launch_contract = " ".join("\n".join((agents_policy, heavy, usage, readme)).split())
         for required_launch_rule in (
             "caller selects the parent before the turn starts",
-            "`gpt-6-sol` with `high` effort",
+            "`gpt-6.1-sol` with `xhigh` effort",
             "never rely on a catalog default",
             "A parent cannot change its own already-running model",
             "requested versus resolved model and effort",
@@ -628,11 +628,11 @@ class ConfigTests(unittest.TestCase):
         sol = tomllib.loads(
             (PACKAGE / "agents" / "executor_sol.toml").read_text(encoding="utf-8")
         )
-        self.assertEqual(sol["model"], "gpt-6-sol")
-        self.assertEqual(sol["model_reasoning_effort"], "medium")
+        self.assertEqual(sol["model"], "gpt-6.1-sol")
+        self.assertEqual(sol["model_reasoning_effort"], "high")
         for name in ("AGENTS.md", "heavy_route.md"):
             policy = (PACKAGE / name).read_text(encoding="utf-8")
-            self.assertIn("`gpt-6-sol` with `high` effort", policy, name)
+            self.assertIn("`gpt-6.1-sol` with `xhigh` effort", policy, name)
             self.assertNotIn("`gpt-5.6-sol`", policy, name)
 
     def test_deepseek_worker_templates_render_deterministically_without_volatile_values(self) -> None:

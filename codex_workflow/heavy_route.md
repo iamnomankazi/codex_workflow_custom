@@ -17,7 +17,7 @@ Create only enabled workers and obey these limits.
 ## Heavy launch boundary
 
 For ChatGPT/Codexless Heavy launches, the caller selects the parent before the
-turn starts. Plain Heavy explicitly uses `gpt-6-sol` with `high` effort;
+turn starts. Plain Heavy explicitly uses `gpt-6.1-sol` with `xhigh` effort;
 never rely on a catalog default. GPT-6 Astra is opt-in only at exactly the
 user-requested supported effort. A parent cannot change its own already-running
 model. Immediately after start, the caller verifies requested versus resolved

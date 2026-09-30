@@ -2,8 +2,8 @@
 name = "executor_sol"
 description = "Advanced executor for mathematically or logically demanding core work and exceptionally difficult cross-cutting production changes."
 
-model = "gpt-6-sol"
-model_reasoning_effort = "medium"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """

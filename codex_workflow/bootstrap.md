@@ -7,7 +7,7 @@ use the equivalent `py -3.11` invocation and native paths.
 ## Multi-Agent V2 prerequisite
 
 Before validating or installing the package, verify that the active OpenCodex
-runtime is the empirically tested baseline `2.50.0` and that its effective
+runtime is at the current compatibility baseline `2.74.0` (or a verified newer version with GPT-6.1 Sol model discovery) and that its effective
 external configuration already contains:
 
 ```json

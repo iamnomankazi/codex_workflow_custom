@@ -86,7 +86,7 @@ Workers are not spawned simply because they are available.
 
 Worker models are defined by their installed role TOMLs. For ChatGPT/Codexless
 Heavy launches, the caller selects the parent before the turn starts: plain
-Heavy explicitly uses `gpt-6-sol` with `high` effort, never a catalog default.
+Heavy explicitly uses `gpt-6.1-sol` with `xhigh` effort, never a catalog default.
 GPT-6 Astra is opt-in only at exactly the user-requested supported effort. A
 parent cannot change its own already-running model. Immediately after start,
 the caller verifies requested versus resolved model and effort; any mismatch
@@ -96,7 +96,7 @@ The current tested setup is:
 
 | Role | Model | Effort | Responsibility |
 | --- | --- | --- | --- |
-| Parent / Orchestrator | GPT-6 Sol | High | Planning, architecture, orchestration, final decisions |
+| Parent / Orchestrator | GPT-6.1 Sol | XHigh | Planning, architecture, orchestration, final decisions |
 | Explorer | DeepSeek V4.1 Flash | Max | Read-only project and repository discovery |
 | Executor Luna | GPT-6 Luna | XHigh | Default implementation and routine repair |
 | Tester | GPT-6 Luna | XHigh | Independent verification and defect diagnosis |
@@ -108,7 +108,7 @@ The source also includes the following alternate and specialist roles:
 | Role | Model | Effort | Use |
 | --- | --- | --- | --- |
 | Executor Terra | GPT-5.6 Terra | High | Alternate default implementation executor |
-| Executor Sol | GPT-6 Sol | Medium | Difficult mathematical, logical, or cross-cutting work |
+| Executor Sol | GPT-6.1 Sol | High | Difficult mathematical, logical, or cross-cutting work |
 | Reviewer Pro | DeepSeek V4.1 Flash | Max | Independent read-only deep review |
 | Doc-writer | GPT-6 Luna | XHigh | Targeted durable documentation and installation-time project-doc initialization |
 
@@ -314,13 +314,15 @@ The lifecycle runtime requires **Python 3.11 or newer**.
 
 The current Heavy setup also depends on Multi-Agent V2 and the tested OpenCodex environment.
 
-The empirically tested OpenCodex baseline is:
+The current OpenCodex compatibility baseline is:
 
 ```text
-2.50.0
+2.74.0
 ```
 
-with effective external configuration equivalent to:
+This baseline includes refreshed native-model discovery needed for GPT-6.1 Sol to appear in the Codex model roster.
+
+The effective external configuration is equivalent to:
 
 ```json
 {

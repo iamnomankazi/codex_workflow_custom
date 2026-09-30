@@ -181,7 +181,7 @@ There are three execution routes:
   larger deployment-state tasks.
 
 For ChatGPT/Codexless Heavy launches, the caller selects the parent before the
-turn starts. Plain Heavy explicitly uses `gpt-6-sol` with `high` effort,
+turn starts. Plain Heavy explicitly uses `gpt-6.1-sol` with `xhigh` effort,
 never a catalog default. GPT-6 Astra is opt-in only at exactly the
 user-requested supported effort. A parent cannot change its own already-running
 model. Immediately after start, the caller verifies requested versus resolved
@@ -313,7 +313,7 @@ configuration, using the incoming package default only for newly introduced
 fields. The project entry point's enabled/disabled state is preserved
 separately.
 
-Multi-Agent V2 depends on the empirically tested OpenCodex `2.50.0` baseline.
+Multi-Agent V2 and GPT-6.1 Sol routing use OpenCodex `2.74.0` as the current compatibility baseline.
 Its effective external configuration must already provide `multiAgentMode` =
 `"v2"`, `syncCodexSubagentDefaults` = `false`, and `agentTaskRecovery` with
 `enabled: true`, model `gpt-5.6-sol`, `timeoutMs` set to `45000`, and
